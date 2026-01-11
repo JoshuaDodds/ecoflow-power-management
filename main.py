@@ -1,60 +1,91 @@
 #!/usr/bin/env python3
-import argparse
-import sys
+import multiprocessing
+import time
 import os
+import sys
 import logging
+import importlib.util
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
 )
-logger = logging.getLogger("main")
+logger = logging.getLogger("orchestrator")
 
-def run_soc_bridge():
-    logger.info("Starting SoC Bridge Service...")
-    from services.soc_bridge import main as bridge_main
-    bridge_main()
+# Define known services and their entry points
+# Format: (Service Name, Relative Path to File, Module Name)
+KNOWN_SERVICES = [
+    ("soc_bridge", "services/soc_bridge.py", "services.soc_bridge"),
+    ("policy_engine", "services/policy_engine.py", "services.policy_engine"),
+    ("host_agent", "agents/host_agent.py", "agents.host_agent"),
+]
 
-def run_policy_engine():
-    logger.info("Starting Policy Engine...")
-    # Import inside the function to avoid errors if the file doesn't exist yet
+
+def run_service(name, file_path, module_name):
+    """
+    Worker function to load and run a service module.
+    """
+    service_logger = logging.getLogger(name)
+    service_logger.info(f"Launching {name} from {file_path}...")
+
     try:
-        from services.policy_engine import main as policy_main
-        policy_main()
-    except ImportError:
-        logger.error("Policy Engine service not found or implemented yet.")
-        sys.exit(1)
+        # Dynamic import to run the module's main() function
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if spec is None or spec.loader is None:
+            service_logger.error(f"Could not load spec for {file_path}")
+            return
 
-def run_agent():
-    logger.info("Starting Host Agent...")
-    try:
-        from agents.host_agent import main as agent_main
-        agent_main()
-    except ImportError:
-        logger.error("Host Agent not found or implemented yet.")
-        sys.exit(1)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+
+        # Assume every service has a main() function
+        if hasattr(module, "main"):
+            module.main()
+        else:
+            service_logger.error(f"No main() function found in {file_path}")
+
+    except Exception as e:
+        service_logger.exception(f"Service {name} crashed: {e}")
+
 
 def main():
-    parser = argparse.ArgumentParser(description="EcoFlow Power Management Unified Entrypoint")
-    parser.add_argument(
-        "service", 
-        choices=["soc_bridge", "policy_engine", "agent"],
-        help="The service to run"
-    )
-    
-    args = parser.parse_args()
+    logger.info("--- EcoFlow Power Management Orchestrator Starting ---")
 
-    if args.service == "soc_bridge":
-        run_soc_bridge()
-    elif args.service == "policy_engine":
-        run_policy_engine()
-    elif args.service == "agent":
-        run_agent()
+    processes = []
+
+    for name, path, mod_name in KNOWN_SERVICES:
+        if os.path.exists(path):
+            logger.info(f"Found service: {name}")
+            p = multiprocessing.Process(target=run_service, args=(name, path, mod_name), name=name)
+            p.start()
+            processes.append(p)
+        else:
+            logger.warning(f"Skipping {name}: File not found at {path}")
+
+    if not processes:
+        logger.error("No services found to start! Check your paths.")
+        sys.exit(1)
+
+    logger.info(f"All available services started. Monitoring {len(processes)} processes...")
+
+    try:
+        # Keep the main process alive to monitor children
+        while True:
+            time.sleep(5)
+            # Optional: Check if processes are still alive and restart them if needed
+            for p in processes:
+                if not p.is_alive():
+                    logger.error(f"Service {p.name} has died!")
+                    # In a real supervisor, you would restart it here.
+
+    except KeyboardInterrupt:
+        logger.info("Shutting down...")
+        for p in processes:
+            p.terminate()
+            p.join()
+
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        logger.info("Shutdown requested.")
-        sys.exit(0)
+    main()
