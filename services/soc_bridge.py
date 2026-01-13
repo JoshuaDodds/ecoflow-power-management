@@ -1,173 +1,132 @@
 #!/usr/bin/env python3
 """
-EcoFlow Cloud MQTT protobuf -> JSON metrics bridge (schema-less, hardened)
+EcoFlow Cloud MQTT Bridge (River 3 Plus / Simplified)
 
-- Subscribes to:
-    bridge-ecoflow/+/data
-    bridge-ecoflow/+/get_reply
-    bridge-ecoflow/+/set_reply
+Focus: Reliable Shutdown Signals ONLY.
+- SoC (Tag 6)
+- Grid Status (Tag 27)
+- Temperature (Tag 16)
 
-- Decodes nested protobuf without .proto files
-- Extracts SoC from field #6 (varint)
-- Supports multi-battery devices
-- Filters invalid SoC values (default 0–100)
-- Publishes:
-    bridge-ecoflow/<DEVICE>/json/state
-    bridge-ecoflow/<DEVICE>/json/state/modules
+Removes all experimental Wattage logic.
 """
 
 import json
 import os
 import time
+import logging
+import threading
 from typing import Dict, List, Optional, Tuple
 
 import paho.mqtt.client as mqtt
 
+# ==============================================================================
+# CONFIGURATION
+# ==============================================================================
+# Standard 'Quota' Request (Ask for data refresh)
+# We will focus on making this reliable in the next phase.
+HEARTBEAT_PAYLOAD_HEX = "0a00"
+# ==============================================================================
 
-# =============================
-# Protobuf wire helpers
-# =============================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+)
+logger = logging.getLogger("soc_bridge")
+
 
 def _read_varint(buf: bytes, i: int) -> Tuple[int, int]:
     shift = 0
     val = 0
     while True:
-        if i >= len(buf):
-            raise ValueError("truncated varint")
+        if i >= len(buf): raise ValueError("truncated varint")
         b = buf[i]
         i += 1
         val |= (b & 0x7F) << shift
-        if not (b & 0x80):
-            return val, i
+        if not (b & 0x80): return val, i
         shift += 7
-        if shift > 63:
-            raise ValueError("varint too long")
 
 
-def _split_framed_payload(payload: bytes) -> List[bytes]:
-    frames = []
+def _extract_tags_with_depth(payload: bytes, depth=0, max_depth=4) -> List[Tuple[int, int, int]]:
+    results = []
+    if depth > max_depth: return results
     i = 0
-    try:
-        while i < len(payload):
-            ln, j = _read_varint(payload, i)
-            i = j
-            if ln < 0 or i + ln > len(payload):
-                raise ValueError
-            frames.append(payload[i:i + ln])
-            i += ln
-        return frames if frames else [payload]
-    except Exception:
-        return [payload]
-
-
-def _unwrap_field1_once(msg: bytes) -> Optional[bytes]:
-    i = 0
-    try:
-        while i < len(msg):
-            tag, i = _read_varint(msg, i)
-            field = tag >> 3
-            wtype = tag & 0x7
-
-            if wtype == 0:
-                _, i = _read_varint(msg, i)
-            elif wtype == 1:
-                i += 8
-            elif wtype == 2:
-                ln, i = _read_varint(msg, i)
-                if i + ln > len(msg):
-                    return None
-                val = msg[i:i + ln]
-                i += ln
-                if field == 1:
-                    return val
-            elif wtype == 5:
-                i += 4
-            else:
-                return None
-        return None
-    except Exception:
-        return None
-
-
-def unwrap_field1(msg: bytes, depth: int) -> Optional[bytes]:
-    cur = msg
-    for _ in range(depth):
-        cur = _unwrap_field1_once(cur)
-        if cur is None:
-            return None
-    return cur
-
-
-def _extract_varints_for_field(msg: bytes, field_id: int) -> List[int]:
-    out = []
-    i = 0
-    while i < len(msg):
+    while i < len(payload):
         try:
-            tag, i = _read_varint(msg, i)
+            tag, i = _read_varint(payload, i)
             field = tag >> 3
             wtype = tag & 0x7
-
             if wtype == 0:
-                v, i = _read_varint(msg, i)
-                if field == field_id:
-                    out.append(v)
+                val, i = _read_varint(payload, i)
+                results.append((field, val, depth))
+            elif wtype == 2:
+                ln, i = _read_varint(payload, i)
+                if ln > 0:
+                    try:
+                        sub = _extract_tags_with_depth(payload[i:i + ln], depth + 1, max_depth)
+                        results.extend(sub)
+                    except:
+                        pass
+                i += ln
             elif wtype == 1:
                 i += 8
-            elif wtype == 2:
-                ln, i = _read_varint(msg, i)
-                i += ln
             elif wtype == 5:
                 i += 4
             else:
                 break
-        except Exception:
+        except:
             break
-    return out
+    return results
 
 
 # =============================
-# Aggregation
+# State Management
 # =============================
 
-def _now_ms() -> int:
-    return int(time.time() * 1000)
+class DeviceState:
+    def __init__(self, device_id):
+        self.device_id = device_id
+        self.soc = 0.0
+        self.soc_modules = []
+        self.grid_connected = False
+        self.temp_celsius = 0.0
+        self.last_update = 0
+
+    def update(self, updates: dict):
+        if "grid_connected" in updates:
+            self.grid_connected = updates["grid_connected"]
+
+        if "temp_celsius" in updates:
+            self.temp_celsius = updates["temp_celsius"]
+
+        self.last_update = time.time()
+
+    def update_soc(self, soc_list: List[int]):
+        valid = [s for s in soc_list if 0 <= s <= 100]
+        if not valid: return
+
+        # Simple Glitch Filter (Ignore single outliers >10% jump)
+        if self.soc > 0 and abs(valid[0] - self.soc) > 10 and len(valid) == 1:
+            return
+
+        self.soc_modules = valid
+        self.soc = round(sum(valid) / len(valid), 2)
+
+    def to_json(self):
+        return {
+            "ts": int(self.last_update * 1000),
+            "device": self.device_id,
+            "soc": self.soc,
+            "soc_modules": self.soc_modules,
+            "grid_connected": self.grid_connected,
+            "temp_celsius": self.temp_celsius
+        }
 
 
-class Aggregator:
-    def __init__(self, window_sec: float):
-        self.window_sec = window_sec
-        self.buf: Dict[str, dict] = {}
-
-    def add(self, device: str, src: str, leaf: str, socs: List[int]):
-        if device not in self.buf:
-            self.buf[device] = {"t0": time.time(), "items": []}
-        self.buf[device]["items"].append((_now_ms(), src, leaf, socs))
-
-    def pop_ready(self):
-        out = []
-        now = time.time()
-        for dev in list(self.buf):
-            if now - self.buf[dev]["t0"] < self.window_sec:
-                continue
-            items = self.buf[dev]["items"]
-            if not items:
-                del self.buf[dev]
-                continue
-
-            ts, src, leaf, _ = items[-1]
-            merged = []
-            for _, _, _, socs in items:
-                for v in socs:
-                    if not merged or merged[-1] != v:
-                        merged.append(v)
-
-            out.append((dev, ts, src, leaf, merged))
-            del self.buf[dev]
-        return out
-
+devices: Dict[str, DeviceState] = {}
+devices_lock = threading.Lock()
 
 # =============================
-# MQTT
+# MQTT & Heartbeat
 # =============================
 
 MQTT_HOST = os.getenv("MQTT_HOST", "mosquitto.hs.mfis.net")
@@ -176,96 +135,78 @@ MQTT_USER = os.getenv("MQTT_USER", "")
 MQTT_PASS = os.getenv("MQTT_PASS", "")
 MQTT_CLIENT_ID = os.getenv("MQTT_CLIENT_ID", "ecoflow-soc-bridge")
 ECOFLOW_BASE = os.getenv("ECOFLOW_BASE", "bridge-ecoflow")
-AGG_WINDOW_SEC = float(os.getenv("AGG_WINDOW_SEC", "1.0"))
-
-SOC_MIN = int(os.getenv("SOC_MIN", "0"))
-SOC_MAX = int(os.getenv("SOC_MAX", "100"))
-
-agg = Aggregator(AGG_WINDOW_SEC)
 
 
-def _topic_parts(topic: str):
-    p = topic.split("/")
-    if len(p) != 3 or p[0] != ECOFLOW_BASE:
-        return None
-    return p[1], p[2]
+def heartbeat_loop(client: mqtt.Client):
+    # This is the simplified Quota request.
+    # The next phase will focus exclusively on making this work reliably without the App.
+    payload = bytes.fromhex(HEARTBEAT_PAYLOAD_HEX)
+    logger.info(f"Heartbeat Active. Sending every 10s.")
+    while True:
+        time.sleep(10)
+        with devices_lock:
+            target_devs = list(devices.keys())
+        for dev in target_devs:
+            try:
+                # Sending to both common command topics to be sure
+                client.publish(f"{ECOFLOW_BASE}/{dev}/quota", payload)
+                client.publish(f"{ECOFLOW_BASE}/{dev}/get", payload)
+            except Exception as e:
+                logger.error(f"Heartbeat failed: {e}")
 
 
 def on_connect(client, userdata, flags, reason_code, properties=None):
+    logger.info("Connected to MQTT.")
     client.subscribe(f"{ECOFLOW_BASE}/+/data")
-    client.subscribe(f"{ECOFLOW_BASE}/+/get_reply")
-    client.subscribe(f"{ECOFLOW_BASE}/+/set_reply")
 
 
 def on_message(client, userdata, msg):
-    tp = _topic_parts(msg.topic)
-    if not tp:
-        return
-    device, leaf = tp
+    parts = msg.topic.split("/")
+    if len(parts) != 3: return
+    device_id = parts[1]
 
-    frames = _split_framed_payload(msg.payload)
-    extracted: List[int] = []
+    with devices_lock:
+        if device_id not in devices:
+            devices[device_id] = DeviceState(device_id)
+        dev_state = devices[device_id]
 
-    for frame in frames:
-        state = unwrap_field1(frame, depth=2)
-        if not state:
-            continue
+    all_tags = _extract_tags_with_depth(msg.payload, max_depth=4)
 
-        vals = _extract_varints_for_field(state, field_id=6)
+    raw_socs = []
+    updates = {}
 
-        # HARD FILTER: only plausible SoC percentages
-        vals = [v for v in vals if SOC_MIN <= v <= SOC_MAX]
+    for tag, val, depth in all_tags:
+        # SoC: Tag 6 @ Depth >= 2
+        if tag == 6 and depth >= 2:
+            raw_socs.append(val)
 
-        extracted.extend(vals)
+        # Grid Status: Tag 27 (0=True, 127=False)
+        if tag == 27:
+            updates["grid_connected"] = (val == 0)
 
-    if extracted:
-        agg.add(device, msg.topic, leaf, extracted)
+        # Temp: Tag 16 @ Depth 2 (Unit 0.01 C)
+        if tag == 16 and depth == 2:
+            updates["temp_celsius"] = val / 100.0
 
-    for dev, ts, src, leaf2, socs in agg.pop_ready():
-        soc = round(sum(socs) / len(socs), 2)
-        soc_min = min(socs)
+    # Apply Updates
+    if raw_socs: dev_state.update_soc(raw_socs)
+    if updates: dev_state.update(updates)
 
-        base = f"{ECOFLOW_BASE}/{dev}/json/state"
-
-        client.publish(
-            base,
-            json.dumps({
-                "ts": ts,
-                "device": dev,
-                "src_topic": src,
-                "leaf": leaf2,
-                "soc": soc,
-                "soc_min": soc_min,
-                "soc_modules": socs,
-            }, separators=(",", ":"))
-        )
-
-        client.publish(
-            f"{base}/modules",
-            json.dumps({
-                "ts": ts,
-                "device": dev,
-                "src_topic": src,
-                "leaf": leaf2,
-                "soc_modules": [
-                    {"module": f"idx{i}", "soc": v}
-                    for i, v in enumerate(socs)
-                ],
-            }, separators=(",", ":"))
-        )
+    # Publish Clean State
+    if raw_socs or updates:
+        client.publish(f"{ECOFLOW_BASE}/{device_id}/json/state", json.dumps(dev_state.to_json()))
 
 
 def main():
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
-                         client_id=MQTT_CLIENT_ID)
-
-    if MQTT_USER:
-        client.username_pw_set(MQTT_USER, MQTT_PASS)
-
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=MQTT_CLIENT_ID)
+    if MQTT_USER: client.username_pw_set(MQTT_USER, MQTT_PASS)
     client.on_connect = on_connect
     client.on_message = on_message
-
     client.connect(MQTT_HOST, MQTT_PORT, 60)
+
+    hb_thread = threading.Thread(target=heartbeat_loop, args=(client,), daemon=True)
+    hb_thread.start()
+
     client.loop_forever()
 
 

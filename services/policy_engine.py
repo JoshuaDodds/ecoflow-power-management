@@ -125,6 +125,14 @@ class PolicyEngine:
             logger.info(f"Publishing shutdown command to {topic}: {payload_json}")
             self.client.publish(topic, payload_json)
 
+def main():
+    logger = logging.getLogger("policy_engine")
+    logger.info("Policy Engine started.")
+
+    # Simple loop to keep the process alive so orchestrator doesn't restart it
+    while True:
+        time.sleep(10)
+
 if __name__ == "__main__":
     try:
         engine = PolicyEngine()
