@@ -1,9 +1,14 @@
 import os
+import sys
 import json
 import time
 import logging
 import uuid
 import paho.mqtt.client as mqtt
+
+# --- Import Utils ---
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils import env_loader
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

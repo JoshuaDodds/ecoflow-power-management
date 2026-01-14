@@ -18,7 +18,8 @@ logger = logging.getLogger("orchestrator")
 KNOWN_SERVICES = [
     ("soc_bridge", "services/soc_bridge.py", "services.soc_bridge"),
     ("policy_engine", "services/policy_engine.py", "services.policy_engine"),
-    ("host_agent", "agents/host_agent.py", "agents.host_agent"),
+    ("host_agent", "agents/host_agent.py", "agents.host_agent"),                 # To be implemented...
+    ("ecoflow_cloud", "services/ecoflow_cloud_bridge.py", "services.ecoflow_cloud_bridge"),
 ]
 
 
