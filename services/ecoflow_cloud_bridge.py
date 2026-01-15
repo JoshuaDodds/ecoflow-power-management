@@ -201,7 +201,7 @@ class CloudBridge:
                 self.cloud_client.publish(topic, pkt)
                 logger.info(f"[{sn}] Sent Wakeup -> Cloud")
 
-            time.sleep(60)
+            time.sleep(300)
 
 
 # ==============================================================================
@@ -209,7 +209,7 @@ class CloudBridge:
 # ==============================================================================
 def main():
     if not ACCESS_KEY or not SECRET_KEY:
-        logger.error("Missing Keys")
+        logger.error("Missing Developer API credentials. Sign up and configure them here: https://developer-eu.ecoflow.com/us")
         return
 
     # 1. Get Certs
