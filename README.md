@@ -1,275 +1,139 @@
-# EcoFlow Power Management
+# EcoFlow Power Management Orchestrator
 
-## Overview
+A robust, self-hosted middleware solution for integrating EcoFlow Power Stations (River 3 Plus, Delta Pro, etc.) into local home automation and server infrastructure.
 
-**EcoFlow Power Management** is a lightweight, MQTT-based power-aware shutdown system for heterogeneous environments (Linux, Windows, NAS).
-
-It consumes EcoFlow device telemetry from a local MQTT broker, derives a **normalized battery State-of-Charge (SoC)**, and—when configurable thresholds are reached—**initiates clean, host-local shutdown procedures** across machines powered by those devices.
-
-The system is intentionally:
-- **Simple**
-- **Observable**
-- **Vendor-agnostic**
-- **Fail-safe**
-
-No direct SSH, WinRM, or remote execution is required.  
-All coordination happens over MQTT.
+This system acts as a bridge between the proprietary EcoFlow MQTT cloud and your local infrastructure, decoding complex Protobuf data streams into usable JSON, and acting as an intelligent **Policy Engine** to orchestrate safe server shutdowns during power outages.
 
 ---
 
-## Design Principles
+## 🏗 System Architecture
 
-- **Read-only by default**  
-  The system never writes to EcoFlow Cloud unless explicitly enabled.
+The system runs as a collection of decoupled microservices, managed by a central **Orchestrator** (`main.py`) to ensure stability and automatic restarts.
 
-- **MQTT as the only control plane**  
-  All services and agents communicate exclusively via MQTT topics.
+```mermaid
+graph TD
+    Cloud[EcoFlow Cloud] -->|MQTT/Protobuf| Bridge[Ecoflow Cloud Bridge]
+    Bridge -->|Raw Data| LocalMQTT[Local Mosquitto]
+    LocalMQTT -->|Raw Data| SOC[SOC Bridge]
+    SOC -->|Decoded JSON| LocalMQTT
+    LocalMQTT -->|Normalized State| Policy[Policy Engine]
+    Policy -->|Shutdown/Abort Cmds| Agents[PC/Server Agents]
+```
 
-- **Flat, explicit services**  
-  One Python file per service. No hidden frameworks.
-
-- **Host-local execution**  
-  Each machine decides how to shut itself down.
-
-- **Windows without Python**  
-  Windows shutdown is handled via native `.bat` / PowerShell scripts.
+### Core Services
+1.  **`ecoflow_cloud_bridge`**: Connects to the EcoFlow AWS/Aliyun MQTT broker using your credentials. It mirrors the raw protobuf data streams to your local MQTT broker under `bridge-ecoflow/`.
+2.  **`soc_bridge`**: Subscribes to the raw local streams. It uses custom decoding libraries (in `services/lib/`) to parse the binary Protobuf messages.
+    * *Feature:* Implements specific logic for **River 3 Plus** (Tag 27 Grid Detection) to ensure accurate grid status reporting.
+    * *Feature:* Filters out "Imposter" status messages that can corrupt data.
+3.  **`policy_engine`**: The decision maker. It watches the normalized data for critical conditions (Grid Lost + Low Battery).
+    * *Feature:* Enforces safety timers (Debounce) to prevent false alarms.
+    * *Feature:* Sends `shutdown` commands to specific devices based on configuration.
+    * *Feature:* Sends `abort` commands if power is restored before the shutdown timer expires.
 
 ---
 
-## High-Level Architecture
+## 🚀 Installation & Setup
 
-```text
-EcoFlow Cloud
-     │
-     ▼
-Mosquitto Bridge
-     │
-     ▼
-┌──────────────────────┐
-│ soc_bridge service   │
-│ (protobuf → JSON)    │
-└──────────────────────┘
-     │
-     ▼
-bridge-ecoflow/<device>/json/state
-     │
-     ▼
-┌──────────────────────┐
-│ policy_engine        │
-│ (threshold logic)    │
-└──────────────────────┘
-     │
-     ▼
-power-manager/<host>/cmd
-     │
-     ▼
-┌──────────────────────┐
-│ host agents          │
-│ (Linux / Windows)    │
-└──────────────────────┘
+### Prerequisites
+* Python 3.10+
+* A local MQTT Broker (e.g., Mosquitto) running and accessible.
+
+### 1. Clone & Prepare
+```bash
+git clone [https://github.com/your-repo/ecoflow-power-management.git](https://github.com/your-repo/ecoflow-power-management.git)
+cd ecoflow-power-management
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 2. Configuration
+Copy the example configuration and edit it with your credentials and policy rules.
+
+```bash
+cp .env-example .env
+nano .env
+```
+
+**Key `.env` Settings:**
+
+| Setting | Description |
+| :--- | :--- |
+| `ECOFLOW_USER` / `PASS` | Your EcoFlow App credentials. |
+| `MQTT_HOST` | IP of your local Mosquitto broker. |
+| `POLICY_SOC_MIN` | **Threshold (%)**. If Battery <= this AND Grid is Lost, start shutdown timer. |
+| `POLICY_DEBOUNCE_SEC` | **Safety Timer**. Condition must persist for this many seconds (e.g., 180s) before acting. |
+| `DEVICE_TO_AGENTS_JSON` | **Mapping**. JSON string defining which Battery triggers which PC Agent. |
+
+**Example Mapping:**
+```bash
+# This maps the EcoFlow device named "Study" to the agent listening on "power-manager/study-pc-agent/cmd"
+DEVICE_TO_AGENTS_JSON='{"Study": ["study-pc-agent"], "Meterkast": ["home-server-agent"]}'
+```
+
+### 3. Running the System
+Start the Orchestrator. It will launch and monitor all sub-services.
+
+```bash
+python3 main.py
 ```
 
 ---
 
-## Repository Layout
+## 🧠 Logic & Behavior
 
-```text
-ecoflow-power-management/
-├── LICENSE
-├── README.md
-├── Makefile
-├── .env.example
-├── docker/
-│   └── entrypoint.sh
-├── services/
-│   └── soc_bridge.py
-├── agents/
-│   └── host_agent.py
-└── archive/
-    └── ecoflow-bridge-proto/
-```
+### Grid Detection (River 3 Plus)
+The system uses a strict parsing logic for the River 3 Plus to avoid false positives common with heuristic methods.
+* **Connected:** Protobuf Tag 27 is `0` or `1`.
+* **Disconnected:** Protobuf Tag 27 is `> 1` (often `142`, `91`, or `112`).
+* *Note:* Input Watts are ignored for grid status determination to prevent "Ghost Voltage" issues.
 
-### Active Components
-
-- `services/soc_bridge.py`  
-  Production-ready telemetry decoder. Converts EcoFlow protobuf into stable JSON.
-
-- `services/policy_engine.py` *(planned)*  
-  Watches SoC, applies thresholds, publishes shutdown commands.
-
-- `agents/host_agent.py` *(Linux only)*  
-  Executes pre-shutdown and shutdown commands.
-
-- **Windows agent (no Python)**  
-  Implemented via `.bat` / PowerShell subscribed to MQTT.
+### The Policy Lifecycle
+1.  **Detection:** System detects `grid_connected: false` AND `soc <= POLICY_SOC_MIN`.
+2.  **Debounce:** A timer starts (default 3 mins).
+    * If grid returns or SOC rises during this time, the timer **aborts**.
+3.  **Trigger:** If the timer expires, a JSON `shutdown` command is published to the mapped agents.
+4.  **Cooldown:** The system waits (default 5 mins) before sending another command to avoid spamming.
+5.  **Recovery:** If power returns shortly after a trigger (within ~2 mins), an `abort` command is sent to cancel any pending OS shutdown operations.
 
 ---
 
-## Telemetry Contract (Stable)
+## 🛠 Troubleshooting
 
-### Input Topic
+**Q: I don't see my device in the logs.**
+A: Ensure your device Serial Number (SN) and Name are correct in the EcoFlow App. The `soc_bridge` auto-discovers devices based on the traffic it sees.
 
-```text
-bridge-ecoflow/<DEVICE>/json/state
-```
+**Q: The grid status is flipping rapidly.**
+A: Check the `soc_bridge` logs. If you see "GRID TAG 27 DETECTED", the parser is working. Ensure `ecoflow_river3plus.py` is using the "Strict Grid Logic" version, not heuristics.
 
-### Example Payload
-
-```json
-{
-  "ts": 1768088715859,
-  "device": "STUDY",
-  "soc": 85.5,
-  "soc_min": 85,
-  "soc_modules": [86, 85]
-}
-```
-
-### Semantics
-
-- `soc` → headline SoC (average)
-- `soc_min` → most conservative value (use for shutdown decisions)
-- `soc_modules`
-  - One value → all parallel batteries equal
-  - Multiple values → module divergence detected
+**Q: Shutdowns happen too fast.**
+A: Increase `POLICY_DEBOUNCE_SEC` in your `.env`.
 
 ---
 
-## Command Topics
+## 🧪 Testing & Simulation
 
-### Shutdown Command
+You can test the Policy Engine logic without draining your actual physical batteries. We provide a simulation tool that injects fake MQTT messages.
 
-```text
-power-manager/<host>/cmd
-```
-
-Payload:
-
-```json
-{
-  "id": "shutdown-1768089900",
-  "action": "shutdown",
-  "delay_sec": 60,
-  "reason": "EcoFlow STUDY soc_min <= 20",
-  "ttl_sec": 300
-}
-```
-
-### Acknowledgement (Optional)
-
-```text
-power-manager/<host>/ack
-```
+1.  Add `"SimulatedDevice"` to your `.env` mapping:
+    ```bash
+    DEVICE_TO_AGENTS_JSON='{..., "SimulatedDevice": ["test-agent"]}'
+    ```
+2.  Run the simulation script in a separate terminal:
+    ```bash
+    python3 scripts/simulate_critical_event.py
+    ```
+3.  Watch the `policy_engine` logs for "TIMER START", "SHUTDOWN TRIGGERED", and "ABORT".
 
 ---
 
-## Environment Configuration (`.env`)
+## 📂 Project Structure
 
-All configuration is done via environment variables.
-
-### Shared MQTT Configuration
-
-```env
-MQTT_HOST=mosquitto
-MQTT_PORT=1883
-MQTT_USER=
-MQTT_PASS=
-```
-
-### Policy Configuration
-
-```env
-POLICY_SOC_MIN=20
-POLICY_DEBOUNCE_SEC=60
-POLICY_COOLDOWN_SEC=600
-DEVICE_TO_AGENTS_JSON={"STUDY":["pc-study","nas-thecus"]}
-```
-
-### Host Agent Configuration
-
-```env
-AGENT_ID=pc-study
-PRE_SHUTDOWN_CMD_1="microk8s stop"
-SHUTDOWN_CMD="shutdown -h now"
-```
-
----
-
-## Windows 11 Support (No Python)
-
-Windows machines do not require Python.
-
-### Recommended Approach
-
-- Use **PowerShell + Task Scheduler**
-- Subscribe to MQTT using:
-  - `mosquitto_sub.exe` (official Mosquitto Windows build)
-
-### Example `shutdown-listener.ps1`
-
-```powershell
-mosquitto_sub.exe -h mosquitto `
-  -t power-manager/pc-study/cmd |
-ForEach-Object {
-    Write-Host "Shutdown command received"
-    Stop-Service microk8s -Force
-    shutdown.exe /s /t 60 /f /c "EcoFlow low battery"
-}
-```
-
-### Run at Startup
-
-- Task Scheduler
-- Trigger: At startup
-- Run as: SYSTEM
-- Action: `powershell.exe -File shutdown-listener.ps1`
-
-This keeps Windows fully native, auditable, and dependency-free.
-
----
-
-## Why This Works Reliably
-
-- MQTT is already present and resilient
-- EcoFlow telemetry is eventually consistent
-- Battery modules only emit deltas when diverging (intentional behavior)
-- Conservative `soc_min` avoids false safety margins
-- Shutdown logic is local and deterministic
-
----
-
-## Roadmap
-
-### Phase 1 (Current)
-
-- ✅ SoC decoding and normalization
-- ✅ Multi-battery handling
-- ✅ Read-only EcoFlow integration
-
-### Phase 2 (Next)
-
-- Policy engine (thresholds, debounce, cooldown)
-- Host agents (Linux + Windows)
-- Audit / event stream
-
-### Phase 3 (Optional)
-
-- Startup coordination
-- Capacity-weighted SoC
-- Alerting / notifications
-
----
-
-## Non-Goals
-
-- No remote execution (SSH, WinRM)
-- No Windows binaries
-- No tight coupling between hosts
-- No vendor SDK dependency
-
----
-
-## Status
-
-**Ready for production telemetry.**  
-Policy engine and agents are intentionally simple and forthcoming.
+* **`main.py`**: The Orchestrator (Entry Point).
+* **`services/`**:
+    * `ecoflow_cloud_bridge.py`: Cloud connection.
+    * `soc_bridge.py`: Protocol decoder.
+    * `policy_engine.py`: Logic & Rules.
+    * `lib/`: Device-specific parsing logic (River 3, Delta Pro).
+* **`agents/`**: Client-side scripts (to be installed on PCs).
+* **`scripts/`**: Testing and simulation tools.

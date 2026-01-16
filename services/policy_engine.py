@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+"""
+EcoFlow Policy Engine (Orchestrator Compatible)
+- Role: Decision Maker.
+- Logic: TRIGGER if (Grid=False AND SOC < Limit) holds TRUE for > Debounce.
+- Safety: If condition clears and a shutdown was pending, send ABORT.
+"""
+
 import os
 import sys
 import json
@@ -11,30 +19,43 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils import env_loader
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("PolicyEngine")
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+logger = logging.getLogger("policy_engine")
+
 
 class PolicyEngine:
     def __init__(self):
         # Load configuration from environment variables
-        self.mqtt_host = os.environ.get("MQTT_HOST", "localhost")
+        self.mqtt_host = os.environ.get("MQTT_HOST", "mosquitto.hs.mfis.net")
         self.mqtt_port = int(os.environ.get("MQTT_PORT", 1883))
+        self.mqtt_base = os.environ.get("ECOFLOW_BASE", "bridge-ecoflow")
 
         try:
-            self.policy_soc_min = int(os.environ["POLICY_SOC_MIN"])
-            self.policy_debounce_sec = int(os.environ["POLICY_DEBOUNCE_SEC"])
-            self.policy_cooldown_sec = int(os.environ["POLICY_COOLDOWN_SEC"])
-            self.device_to_agents = json.loads(os.environ["DEVICE_TO_AGENTS_JSON"])
-        except (KeyError, ValueError) as e:
-            logger.error(f"Missing or invalid configuration: {e}")
-            raise
+            self.policy_soc_min = int(os.environ.get("POLICY_SOC_MIN", "10"))
+            self.policy_debounce_sec = int(os.environ.get("POLICY_DEBOUNCE_SEC", "180"))
+            self.policy_cooldown_sec = int(os.environ.get("POLICY_COOLDOWN_SEC", "300"))
+            self.max_data_gap_sec = 60
+
+            # JSON Mapping: {"Meterkast": ["agent1"], "Study": ["agent2"]}
+            raw_agents = os.environ.get("DEVICE_TO_AGENTS_JSON", "{}")
+            self.device_to_agents = json.loads(raw_agents)
+
+            # How long is the shutdown delay on the client? (Default assumption 60s)
+            self.agent_shutdown_delay = 60
+
+            logger.info(
+                f"Policy Active: Shutdown if SOC < {self.policy_soc_min}% AND Grid=Lost for > {self.policy_debounce_sec}s")
+            logger.info(f"Managed Agents: {self.device_to_agents}")
+
+        except (KeyError, ValueError, json.JSONDecodeError) as e:
+            logger.error(f"Configuration Error: {e}")
+            self.device_to_agents = {}
 
         # State tracking
-        # {device_id: {"start_time": float, "last_trigger": float}}
         self.device_states = {}
 
         # MQTT Client setup
-        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="ecoflow-policy-engine")
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
 
@@ -45,12 +66,12 @@ class PolicyEngine:
             self.client.loop_forever()
         except Exception as e:
             logger.error(f"Failed to connect or run MQTT client: {e}")
-            raise
+            time.sleep(5)
 
-    def on_connect(self, client, userdata, flags, rc, properties):
+    def on_connect(self, client, userdata, flags, rc, properties=None):
         if rc == 0:
             logger.info("Connected to MQTT broker")
-            topic = "bridge-ecoflow/+/json/state"
+            topic = f"{self.mqtt_base}/+/json/state"
             client.subscribe(topic)
             logger.info(f"Subscribed to {topic}")
         else:
@@ -60,85 +81,95 @@ class PolicyEngine:
         try:
             payload = json.loads(msg.payload.decode())
             device = payload.get("device")
-            soc_min = payload.get("soc_min")
+            soc = payload.get("soc")
+            grid_connected = payload.get("grid_connected")
 
-            if device is not None and soc_min is not None:
-                self.evaluate_policy(device, soc_min)
-            else:
-                logger.debug(f"Ignored message with missing fields: {payload}")
+            if device and soc is not None and grid_connected is not None:
+                self.evaluate_policy(device, soc, grid_connected)
 
         except json.JSONDecodeError:
-            logger.warning(f"Failed to decode JSON payload: {msg.payload}")
+            pass
         except Exception as e:
             logger.error(f"Error processing message: {e}")
 
-    def evaluate_policy(self, device, soc_min):
+    def evaluate_policy(self, device, soc, grid_connected):
         now = time.time()
 
-        # Initialize state for new device if needed
         if device not in self.device_states:
             self.device_states[device] = {
-                "start_time": None,      # When soc_min first dropped below threshold
-                "last_trigger": 0.0      # When the last shutdown command was sent
+                "start_time": None,
+                "last_msg_ts": now,
+                "last_trigger": 0.0
             }
 
         state = self.device_states[device]
 
-        if soc_min <= self.policy_soc_min:
-            # Condition met: soc_min is low
-            if state["start_time"] is None:
-                # First time dropping below threshold
-                state["start_time"] = now
-                logger.info(f"Device {device} SoC ({soc_min}) below threshold ({self.policy_soc_min}). Starting debounce timer.")
-            else:
-                # Already below threshold, check debounce
-                duration = now - state["start_time"]
-                if duration >= self.policy_debounce_sec:
-                    # Debounce period passed, check cooldown
-                    time_since_last_trigger = now - state["last_trigger"]
-                    if time_since_last_trigger >= self.policy_cooldown_sec:
-                        # Cooldown passed, trigger shutdown
-                        logger.info(f"Device {device} SoC ({soc_min}) low for {duration:.1f}s. Triggering shutdown.")
-                        self.trigger_shutdown(device, soc_min)
-                        state["last_trigger"] = now
-                    else:
-                        logger.debug(f"Device {device} SoC low, but in cooldown ({time_since_last_trigger:.1f}s < {self.policy_cooldown_sec}s).")
-        else:
-            # Condition not met: soc_min is healthy
+        # Gap Check
+        time_since_msg = now - state["last_msg_ts"]
+        state["last_msg_ts"] = now
+
+        if time_since_msg > self.max_data_gap_sec:
             if state["start_time"] is not None:
-                logger.info(f"Device {device} SoC ({soc_min}) recovered above threshold. Resetting debounce.")
+                logger.warning(f"[{device}] DATA GAP DETECTED. Resetting safety timer.")
+                state["start_time"] = None
+            return
+
+        # Critical Check
+        danger_condition = (not grid_connected) and (soc <= self.policy_soc_min)
+
+        if danger_condition:
+            # --- DANGER ---
+            if state["start_time"] is None:
+                state["start_time"] = now
+                logger.warning(
+                    f"[{device}] TIMER START: Grid Lost & SoC {soc}%. Waiting {self.policy_debounce_sec}s...")
+            else:
+                duration = now - state["start_time"]
+                if duration > self.policy_debounce_sec:
+                    time_since_last_trigger = now - state["last_trigger"]
+
+                    if time_since_last_trigger >= self.policy_cooldown_sec:
+                        logger.error(f"[{device}] SHUTDOWN TRIGGERED. Sending Kill Command.")
+                        self.send_command(device, "shutdown", f"Critical: Grid Lost & SoC {soc}%")
+                        state["last_trigger"] = now
+
+        else:
+            # --- SAFE ---
+            if state["start_time"] is not None:
+                duration = time.time() - state["start_time"]
+                logger.info(f"[{device}] ABORT TIMER: Condition cleared after {duration:.1f}s.")
                 state["start_time"] = None
 
-    def trigger_shutdown(self, device, soc_min):
+            # ABORT LOGIC
+            time_since_trigger = now - state["last_trigger"]
+            if time_since_trigger < (self.agent_shutdown_delay + 60) and state["last_trigger"] > 0:
+                logger.info(f"[{device}] RECOVERY DETECTED: Sending ABORT to cancel pending shutdowns.")
+                self.send_command(device, "abort", "Power Restored / Battery Safe")
+                state["last_trigger"] = 0.0
+
+    def send_command(self, device, action, reason):
         agents = self.device_to_agents.get(device, [])
         if not agents:
-            logger.warning(f"No agents configured for device {device}")
             return
 
         command_id = str(uuid.uuid4())
         payload = {
             "id": command_id,
-            "action": "shutdown",
-            "delay_sec": 60,
-            "reason": f"EcoFlow {device} soc_min <= {self.policy_soc_min}",
+            "action": action,  # "shutdown" or "abort"
+            "delay_sec": self.agent_shutdown_delay,
+            "reason": reason,
             "ttl_sec": 300
         }
 
         for agent_id in agents:
             topic = f"power-manager/{agent_id}/cmd"
             payload_json = json.dumps(payload)
-            logger.info(f"Publishing shutdown command to {topic}: {payload_json}")
-            self.client.publish(topic, payload_json)
+            logger.info(f"Publishing {action.upper()} -> {topic}")
+            self.client.publish(topic, payload_json, qos=2)
 
+
+# --- Entry Point for Orchestrator ---
 def main():
-    logger = logging.getLogger("policy_engine")
-    logger.info("Policy Engine started.")
-
-    # Simple loop to keep the process alive so orchestrator doesn't restart it
-    while True:
-        time.sleep(10)
-
-if __name__ == "__main__":
     try:
         engine = PolicyEngine()
         engine.run()
@@ -146,4 +177,7 @@ if __name__ == "__main__":
         logger.info("Stopping Policy Engine...")
     except Exception as e:
         logger.critical(f"Unexpected error: {e}")
-        exit(1)
+
+
+if __name__ == "__main__":
+    main()
