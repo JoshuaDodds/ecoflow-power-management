@@ -10,6 +10,19 @@ $MQTT_PORT = if ($env:MQTT_PORT) { $env:MQTT_PORT } else { "1883" }
 $AGENT_ID = if ($env:AGENT_ID) { $env:AGENT_ID } else { "windows-agent" }
 $MQTT_TOPIC = "power-manager/$AGENT_ID/cmd"
 
+# Pre-shutdown commands (executed in order before shutdown)
+$PRE_SHUTDOWN_CMDS = @()
+for ($i = 1; $i -le 9; $i++) {
+    $cmd = [System.Environment]::GetEnvironmentVariable("PRE_SHUTDOWN_CMD_$i")
+    if ($cmd) {
+        $PRE_SHUTDOWN_CMDS += $cmd
+    }
+}
+
+# Shutdown and abort commands (customizable)
+$SHUTDOWN_CMD = if ($env:SHUTDOWN_CMD) { $env:SHUTDOWN_CMD } else { "shutdown.exe /s /t 60 /f /c 'EcoFlow Critical Battery Shutdown'" }
+$ABORT_CMD = if ($env:ABORT_CMD) { $env:ABORT_CMD } else { "shutdown.exe /a" }
+
 # ========== LOGGING FUNCTION ==========
 function Write-Log {
     param([string]$Message)
@@ -67,23 +80,48 @@ if (-not $mosquittoPath) {
         switch ($action) {
             "shutdown" {
                 Write-Log "SHUTDOWN command received!"
-                Write-Log "Initiating system shutdown in 60 seconds..."
                 
-                # Optional: Stop critical services gracefully before shutdown
-                # Uncomment if you run Hyper-V VMs:
-                # Write-Log "Stopping Hyper-V Virtual Machine Management service..."
-                # Stop-Service "vmms" -Force -ErrorAction SilentlyContinue
+                # Execute pre-shutdown commands
+                if ($PRE_SHUTDOWN_CMDS.Count -gt 0) {
+                    Write-Log "Executing $($PRE_SHUTDOWN_CMDS.Count) pre-shutdown command(s)..."
+                    for ($i = 0; $i -lt $PRE_SHUTDOWN_CMDS.Count; $i++) {
+                        $cmd = $PRE_SHUTDOWN_CMDS[$i]
+                        $idx = $i + 1
+                        Write-Log "Pre-shutdown $idx/$($PRE_SHUTDOWN_CMDS.Count): $cmd"
+                        
+                        try {
+                            $result = Invoke-Expression $cmd 2>&1
+                            if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
+                                Write-Log "✓ Command succeeded"
+                                if ($result) {
+                                    Write-Log "Output: $result"
+                                }
+                            } else {
+                                Write-Log "✗ Command failed with exit code $LASTEXITCODE"
+                                if ($result) {
+                                    Write-Log "Error: $result"
+                                }
+                            }
+                        }
+                        catch {
+                            Write-Log "✗ Command failed: $_"
+                        }
+                    }
+                }
                 
-                # Execute shutdown
-                shutdown.exe /s /t 60 /f /c "EcoFlow Critical Battery Shutdown"
+                # Execute shutdown command
+                Write-Log "Initiating system shutdown..."
+                Write-Log "Command: $SHUTDOWN_CMD"
+                Invoke-Expression $SHUTDOWN_CMD
             }
             
             "abort" {
                 Write-Log "ABORT command received!"
                 Write-Log "Canceling pending shutdown..."
+                Write-Log "Command: $ABORT_CMD"
                 
                 # Cancel any pending shutdown
-                shutdown.exe /a
+                Invoke-Expression $ABORT_CMD
             }
             
             default {

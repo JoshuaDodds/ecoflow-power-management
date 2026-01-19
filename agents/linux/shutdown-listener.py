@@ -17,6 +17,17 @@ MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 AGENT_ID = os.getenv("AGENT_ID", "linux-agent")
 MQTT_TOPIC = f"power-manager/{AGENT_ID}/cmd"
 
+# Pre-shutdown commands (executed in order before shutdown)
+PRE_SHUTDOWN_CMDS = []
+for i in range(1, 10):  # Support up to 9 pre-shutdown commands
+    cmd = os.getenv(f"PRE_SHUTDOWN_CMD_{i}")
+    if cmd:
+        PRE_SHUTDOWN_CMDS.append(cmd)
+
+# Shutdown and abort commands (customizable)
+SHUTDOWN_CMD = os.getenv("SHUTDOWN_CMD", "sudo shutdown -h +1")
+ABORT_CMD = os.getenv("ABORT_CMD", "sudo shutdown -c")
+
 # ========== MQTT CALLBACKS ==========
 def on_connect(client, userdata, flags, rc):
     """Called when connected to MQTT broker."""
@@ -40,22 +51,45 @@ def on_message(client, userdata, msg):
         
         if action == "shutdown":
             print(f"[{datetime.now()}] SHUTDOWN command received!")
-            print(f"[{datetime.now()}] Initiating system shutdown in 60 seconds...")
+            
+            # Execute pre-shutdown commands
+            if PRE_SHUTDOWN_CMDS:
+                print(f"[{datetime.now()}] Executing {len(PRE_SHUTDOWN_CMDS)} pre-shutdown command(s)...")
+                for idx, cmd in enumerate(PRE_SHUTDOWN_CMDS, 1):
+                    print(f"[{datetime.now()}] Pre-shutdown {idx}/{len(PRE_SHUTDOWN_CMDS)}: {cmd}")
+                    try:
+                        result = subprocess.run(
+                            cmd,
+                            shell=True,
+                            capture_output=True,
+                            text=True,
+                            timeout=30
+                        )
+                        if result.returncode == 0:
+                            print(f"[{datetime.now()}] ✓ Command succeeded")
+                            if result.stdout:
+                                print(f"[{datetime.now()}] Output: {result.stdout.strip()}")
+                        else:
+                            print(f"[{datetime.now()}] ✗ Command failed with code {result.returncode}")
+                            if result.stderr:
+                                print(f"[{datetime.now()}] Error: {result.stderr.strip()}")
+                    except subprocess.TimeoutExpired:
+                        print(f"[{datetime.now()}] ✗ Command timed out after 30 seconds")
+                    except Exception as e:
+                        print(f"[{datetime.now()}] ✗ Command failed: {e}")
             
             # Execute shutdown command
-            # -h: halt after shutdown
-            # +1: delay 1 minute (gives time to abort if needed)
-            subprocess.run([
-                "sudo", "shutdown", "-h", "+1", 
-                "EcoFlow Critical Battery Shutdown"
-            ])
+            print(f"[{datetime.now()}] Initiating system shutdown...")
+            print(f"[{datetime.now()}] Command: {SHUTDOWN_CMD}")
+            subprocess.run(SHUTDOWN_CMD, shell=True)
             
         elif action == "abort":
             print(f"[{datetime.now()}] ABORT command received!")
             print(f"[{datetime.now()}] Canceling pending shutdown...")
+            print(f"[{datetime.now()}] Command: {ABORT_CMD}")
             
             # Cancel any pending shutdown
-            subprocess.run(["sudo", "shutdown", "-c"])
+            subprocess.run(ABORT_CMD, shell=True)
             
         else:
             print(f"[{datetime.now()}] Unknown action: {action}")

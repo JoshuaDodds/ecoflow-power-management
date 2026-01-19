@@ -9,6 +9,20 @@ MQTT_PORT="${MQTT_PORT:-1883}"
 AGENT_ID="${AGENT_ID:-macos-agent}"
 MQTT_TOPIC="power-manager/${AGENT_ID}/cmd"
 
+# Pre-shutdown commands (executed in order before shutdown)
+PRE_SHUTDOWN_CMDS=()
+for i in {1..9}; do
+    var_name="PRE_SHUTDOWN_CMD_${i}"
+    cmd="${!var_name}"
+    if [ -n "$cmd" ]; then
+        PRE_SHUTDOWN_CMDS+=("$cmd")
+    fi
+done
+
+# Shutdown and abort commands (customizable)
+SHUTDOWN_CMD="${SHUTDOWN_CMD:-sudo shutdown -h +1}"
+ABORT_CMD="${ABORT_CMD:-sudo killall shutdown}"
+
 # ========== LOGGING FUNCTION ==========
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
@@ -39,20 +53,37 @@ mosquitto_sub -h "${MQTT_BROKER}" -p "${MQTT_PORT}" -t "${MQTT_TOPIC}" | while r
     case "${action}" in
         shutdown)
             log "SHUTDOWN command received!"
-            log "Initiating system shutdown in 60 seconds..."
             
-            # macOS shutdown command (requires sudo)
-            # -h: halt
-            # +1: delay 1 minute
-            sudo shutdown -h +1 "EcoFlow Critical Battery Shutdown"
+            # Execute pre-shutdown commands
+            if [ ${#PRE_SHUTDOWN_CMDS[@]} -gt 0 ]; then
+                log "Executing ${#PRE_SHUTDOWN_CMDS[@]} pre-shutdown command(s)..."
+                for idx in "${!PRE_SHUTDOWN_CMDS[@]}"; do
+                    cmd="${PRE_SHUTDOWN_CMDS[$idx]}"
+                    num=$((idx + 1))
+                    log "Pre-shutdown ${num}/${#PRE_SHUTDOWN_CMDS[@]}: ${cmd}"
+                    
+                    if eval "${cmd}" 2>&1 | while IFS= read -r line; do log "  ${line}"; done; then
+                        log "✓ Command succeeded"
+                    else
+                        exit_code=$?
+                        log "✗ Command failed with exit code ${exit_code}"
+                    fi
+                done
+            fi
+            
+            # Execute shutdown command
+            log "Initiating system shutdown..."
+            log "Command: ${SHUTDOWN_CMD}"
+            eval "${SHUTDOWN_CMD}"
             ;;
             
         abort)
             log "ABORT command received!"
             log "Canceling pending shutdown..."
+            log "Command: ${ABORT_CMD}"
             
-            # Cancel pending shutdown on macOS
-            sudo killall shutdown 2>/dev/null || log "No pending shutdown to cancel"
+            # Cancel pending shutdown
+            eval "${ABORT_CMD}" 2>/dev/null || log "No pending shutdown to cancel"
             ;;
             
         *)
