@@ -67,7 +67,8 @@ fi
 log "Listening for commands..."
 
 # Listen indefinitely for MQTT messages
-mosquitto_sub -h "${MQTT_BROKER}" -p "${MQTT_PORT}" -t "${MQTT_TOPIC}" | while read -r message; do
+# Use -F to get formatted output with one message per line
+mosquitto_sub -h "${MQTT_BROKER}" -p "${MQTT_PORT}" -t "${MQTT_TOPIC}" -F '%p' | while read -r message; do
     log "Received message: ${message}"
     
     # Extract action from JSON using grep/sed (no jq dependency)
@@ -110,7 +111,9 @@ mosquitto_sub -h "${MQTT_BROKER}" -p "${MQTT_PORT}" -t "${MQTT_TOPIC}" | while r
             ;;
             
         *)
-            log "Unknown action: ${action}"
+            if [ -n "${action}" ]; then
+                log "Unknown action: ${action}"
+            fi
             ;;
     esac
 done
