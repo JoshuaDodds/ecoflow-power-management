@@ -8,6 +8,11 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/.env"
 
+# Clear any existing PRE_SHUTDOWN_CMD variables to prevent stale values
+for i in {1..9}; do
+    unset "PRE_SHUTDOWN_CMD_${i}"
+done
+
 if [ -f "$ENV_FILE" ]; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Loading configuration from .env file..."
     while IFS='=' read -r key value; do

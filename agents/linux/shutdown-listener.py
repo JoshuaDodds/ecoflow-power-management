@@ -15,6 +15,12 @@ from pathlib import Path
 # ========== LOAD .ENV FILE ==========
 # Load environment variables from .env file if it exists
 env_file = Path(__file__).parent / ".env"
+
+# Clear any existing PRE_SHUTDOWN_CMD variables to prevent stale values
+for i in range(1, 10):
+    if f"PRE_SHUTDOWN_CMD_{i}" in os.environ:
+        del os.environ[f"PRE_SHUTDOWN_CMD_{i}"]
+
 if env_file.exists():
     print(f"[{datetime.now()}] Loading configuration from .env file...")
     with open(env_file, 'r') as f:

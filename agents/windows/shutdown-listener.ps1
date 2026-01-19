@@ -6,6 +6,12 @@
 # ========== LOAD .ENV FILE ==========
 # Load environment variables from .env file if it exists
 $envFile = Join-Path $PSScriptRoot ".env"
+
+# Clear any existing PRE_SHUTDOWN_CMD variables to prevent stale values
+for ($i = 1; $i -le 9; $i++) {
+    [System.Environment]::SetEnvironmentVariable("PRE_SHUTDOWN_CMD_$i", $null, 'Process')
+}
+
 if (Test-Path $envFile) {
     Write-Host "Loading configuration from .env file..."
     Get-Content $envFile | ForEach-Object {
@@ -15,8 +21,11 @@ if (Test-Path $envFile) {
             if ($line -match '^([^=]+)=(.*)$') {
                 $name = $matches[1].Trim()
                 $value = $matches[2].Trim()
-                # Remove quotes if present
-                $value = $value -replace '^["'']|["'']$', ''
+                # Only remove outer quotes if the entire value is quoted
+                if (($value.StartsWith('"') -and $value.EndsWith('"')) -or 
+                    ($value.StartsWith("'") -and $value.EndsWith("'"))) {
+                    $value = $value.Substring(1, $value.Length - 2)
+                }
                 [System.Environment]::SetEnvironmentVariable($name, $value, 'Process')
             }
         }
