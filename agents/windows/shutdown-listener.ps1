@@ -26,14 +26,36 @@ Write-Log "Listening for commands..."
 
 # Check if mosquitto_sub.exe is available
 $mosquittoPath = Get-Command mosquitto_sub.exe -ErrorAction SilentlyContinue
+
 if (-not $mosquittoPath) {
-    Write-Log "ERROR: mosquitto_sub.exe not found in PATH"
-    Write-Log "Please install Mosquitto for Windows from https://mosquitto.org/download/"
-    exit 1
+    # Check common installation locations
+    $commonPaths = @(
+        "C:\Program Files\mosquitto\mosquitto_sub.exe",
+        "C:\Program Files (x86)\mosquitto\mosquitto_sub.exe",
+        "$env:ProgramFiles\mosquitto\mosquitto_sub.exe",
+        "$env:ProgramFiles(x86)\mosquitto\mosquitto_sub.exe"
+    )
+    
+    foreach ($path in $commonPaths) {
+        if (Test-Path $path) {
+            Write-Log "Found mosquitto_sub.exe at: $path"
+            $mosquittoPath = $path
+            break
+        }
+    }
+    
+    if (-not $mosquittoPath) {
+        Write-Log "ERROR: mosquitto_sub.exe not found in PATH or common installation locations"
+        Write-Log "Please install Mosquitto for Windows from https://mosquitto.org/download/"
+        Write-Log "Or add the Mosquitto installation directory to your PATH environment variable"
+        exit 1
+    }
+} else {
+    $mosquittoPath = $mosquittoPath.Source
 }
 
 # Listen indefinitely for MQTT messages
-mosquitto_sub.exe -h $MQTT_BROKER -p $MQTT_PORT -t $MQTT_TOPIC | ForEach-Object {
+& $mosquittoPath -h $MQTT_BROKER -p $MQTT_PORT -t $MQTT_TOPIC | ForEach-Object {
     $message = $_
     Write-Log "Received message: $message"
     
