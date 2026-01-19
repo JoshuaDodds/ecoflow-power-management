@@ -102,7 +102,7 @@ Environment="MQTT_BROKER=mosquitto.local"
 Environment="AGENT_ID=pc-study"
 Environment="PRE_SHUTDOWN_CMD_1=docker stop $(docker ps -q)"
 Environment="PRE_SHUTDOWN_CMD_2=systemctl stop microk8s"
-ExecStart=/usr/bin/python3 /opt/ecoflow/agents/linux/shutdown-listener.py
+ExecStart=/bin/bash /opt/ecoflow/agents/linux/shutdown-listener.sh
 Restart=always
 RestartSec=10
 
