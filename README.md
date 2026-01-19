@@ -81,42 +81,50 @@ python3 main.py
 
 ## 💻 Client Agents (The Consumers)
 
-This system follows a "Smart Source, Dumb Sink" architecture. The server logic decides *when* to shut down; the clients simply listen for the order.
+This system follows a **"Smart Source, Dumb Sink"** architecture. The server logic decides *when* to shut down; the clients simply listen for the order.
 
-### Linux Agents (Python)
-For Linux hosts (servers, Raspberry Pis), use the included Python agent.
-* **Location:** `agents/host_agent.py`
-* **Logic:** Listens to `power-manager/<AGENT_ID>/cmd`, validates the UUID, runs `shutdown -h now`.
+All agent scripts are organized by platform in the `agents/` directory:
 
-### Windows Agents (Native / No Python)
-Windows machines do not require Python installed. You can use native PowerShell triggered by the official `mosquitto_sub.exe`.
-
-**Recommended Approach:**
-1.  Download **Mosquitto for Windows**.
-2.  Create a PowerShell script `shutdown-listener.ps1`:
-
-```powershell
-# Windows Native Agent
-$BROKER = "mosquitto.local"
-$TOPIC = "power-manager/pc-study/cmd"
-
-# Listen indefinitely
-mosquitto_sub.exe -h $BROKER -t $TOPIC | ForEach-Object {
-    $msg = $_
-    Write-Host "Received Command: $msg"
-    
-    # Optional: Parse JSON to check for "action": "shutdown" vs "abort"
-    if ($msg -match '"action":\s*"shutdown"') {
-        Write-Host "Initiating Shutdown..."
-        Stop-Service "Hyper-V" -Force -ErrorAction SilentlyContinue
-        shutdown.exe /s /t 60 /f /c "EcoFlow Critical Battery Shutdown"
-    } elseif ($msg -match '"action":\s*"abort"') {
-         Write-Host "Power Restored. Aborting Shutdown."
-         shutdown.exe /a
-    }
-}
+### 📁 Agent Directory Structure
 ```
-3.  Run via **Task Scheduler** (At Startup, Run as SYSTEM).
+agents/
+├── linux/          # Python-based agent for Linux systems
+├── windows/        # PowerShell-based agent for Windows
+└── macos/          # Bash-based agent for macOS
+```
+
+### Platform-Specific Agents
+
+#### 🐧 Linux Agent
+- **Location:** [`agents/linux/`](agents/linux/)
+- **Script:** `shutdown-listener.py`
+- **Requirements:** Python 3.7+, `paho-mqtt`
+- **Setup:** See [Linux Agent README](agents/linux/README.md)
+- **Logic:** Listens to `power-manager/<AGENT_ID>/cmd`, executes `sudo shutdown`
+
+#### 🪟 Windows Agent
+- **Location:** [`agents/windows/`](agents/windows/)
+- **Script:** `shutdown-listener.ps1`
+- **Requirements:** PowerShell 5.1+, [Mosquitto for Windows](https://mosquitto.org/download/)
+- **Setup:** See [Windows Agent README](agents/windows/README.md)
+- **Logic:** Native PowerShell script, no Python required, uses `mosquitto_sub.exe`
+
+#### 🍎 macOS Agent
+- **Location:** [`agents/macos/`](agents/macos/)
+- **Script:** `shutdown-listener.sh`
+- **Requirements:** Mosquitto client (`brew install mosquitto`)
+- **Setup:** See [macOS Agent README](agents/macos/README.md)
+- **Logic:** Bash script with MQTT listener, executes `sudo shutdown`
+
+### Quick Start
+
+Each platform directory contains:
+- ✅ Ready-to-use agent script
+- 📖 Detailed README with installation instructions
+- ⚙️ Service/daemon configuration examples
+- 🔧 Environment variable configuration
+
+**Next Steps:** Navigate to your platform's directory and follow the README for installation and setup instructions.
 
 ---
 
