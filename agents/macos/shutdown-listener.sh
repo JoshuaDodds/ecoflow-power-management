@@ -3,8 +3,26 @@
 # Listens for shutdown commands via MQTT and executes system shutdown.
 # Requires: Mosquitto client (install via: brew install mosquitto)
 
+# ========== LOAD .ENV FILE ==========
+# Load environment variables from .env file if it exists
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="${SCRIPT_DIR}/.env"
+
+if [ -f "$ENV_FILE" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Loading configuration from .env file..."
+    while IFS='=' read -r key value; do
+        # Skip comments, empty lines, and PowerShell-style variables
+        if [[ -n "$key" && ! "$key" =~ ^[[:space:]]*# && ! "$key" =~ ^\$ ]]; then
+            # Remove leading/trailing whitespace and quotes
+            key=$(echo "$key" | xargs)
+            value=$(echo "$value" | xargs | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+            export "$key=$value"
+        fi
+    done < "$ENV_FILE"
+fi
+
 # ========== CONFIGURATION ==========
-MQTT_BROKER="${MQTT_BROKER:-mosquitto.local}"
+MQTT_BROKER="${MQTT_BROKER:-${MQTT_HOST:-mosquitto.local}}"
 MQTT_PORT="${MQTT_PORT:-1883}"
 AGENT_ID="${AGENT_ID:-macos-agent}"
 MQTT_TOPIC="power-manager/${AGENT_ID}/cmd"

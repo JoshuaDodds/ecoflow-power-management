@@ -10,9 +10,25 @@ import json
 import subprocess
 import paho.mqtt.client as mqtt
 from datetime import datetime
+from pathlib import Path
+
+# ========== LOAD .ENV FILE ==========
+# Load environment variables from .env file if it exists
+env_file = Path(__file__).parent / ".env"
+if env_file.exists():
+    print(f"[{datetime.now()}] Loading configuration from .env file...")
+    with open(env_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            # Skip comments, empty lines, and PowerShell-style variables
+            if line and not line.startswith('#') and not line.startswith('$') and '=' in line:
+                key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                os.environ[key] = value
 
 # ========== CONFIGURATION ==========
-MQTT_BROKER = os.getenv("MQTT_BROKER", "mosquitto.local")
+MQTT_BROKER = os.getenv("MQTT_BROKER") or os.getenv("MQTT_HOST", "mosquitto.local")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 AGENT_ID = os.getenv("AGENT_ID", "linux-agent")
 MQTT_TOPIC = f"power-manager/{AGENT_ID}/cmd"

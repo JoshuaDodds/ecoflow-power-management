@@ -3,9 +3,29 @@
 # Requires: Mosquitto for Windows (mosquitto_sub.exe)
 # Download from: https://mosquitto.org/download/
 
+# ========== LOAD .ENV FILE ==========
+# Load environment variables from .env file if it exists
+$envFile = Join-Path $PSScriptRoot ".env"
+if (Test-Path $envFile) {
+    Write-Host "Loading configuration from .env file..."
+    Get-Content $envFile | ForEach-Object {
+        $line = $_.Trim()
+        # Skip comments and empty lines
+        if ($line -and -not $line.StartsWith('#') -and -not $line.StartsWith('$')) {
+            if ($line -match '^([^=]+)=(.*)$') {
+                $name = $matches[1].Trim()
+                $value = $matches[2].Trim()
+                # Remove quotes if present
+                $value = $value -replace '^["'']|["'']$', ''
+                [System.Environment]::SetEnvironmentVariable($name, $value, 'Process')
+            }
+        }
+    }
+}
+
 # ========== CONFIGURATION ==========
 # Set these environment variables or modify directly:
-$MQTT_BROKER = if ($env:MQTT_BROKER) { $env:MQTT_BROKER } else { "mosquitto.local" }
+$MQTT_BROKER = if ($env:MQTT_BROKER) { $env:MQTT_BROKER } else { if ($env:MQTT_HOST) { $env:MQTT_HOST } else { "mosquitto.local" } }
 $MQTT_PORT = if ($env:MQTT_PORT) { $env:MQTT_PORT } else { "1883" }
 $AGENT_ID = if ($env:AGENT_ID) { $env:AGENT_ID } else { "windows-agent" }
 $MQTT_TOPIC = "power-manager/$AGENT_ID/cmd"
@@ -92,19 +112,19 @@ if (-not $mosquittoPath) {
                         try {
                             $result = Invoke-Expression $cmd 2>&1
                             if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
-                                Write-Log "✓ Command succeeded"
+                                Write-Log "Command succeeded"
                                 if ($result) {
                                     Write-Log "Output: $result"
                                 }
                             } else {
-                                Write-Log "✗ Command failed with exit code $LASTEXITCODE"
+                                Write-Log "Command failed with exit code $LASTEXITCODE"
                                 if ($result) {
                                     Write-Log "Error: $result"
                                 }
                             }
                         }
                         catch {
-                            Write-Log "✗ Command failed: $_"
+                            Write-Log "Command failed: $_"
                         }
                     }
                 }
