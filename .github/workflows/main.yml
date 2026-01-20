@@ -1,0 +1,76 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ main ]
+
+  workflow_dispatch:
+
+jobs:
+  build_and_push:
+    if: "!contains(github.event.head_commit.message, 'skip ci')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Repository Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: '0'
+
+      - name: Generate container version tag
+        id: calver
+        run: |
+          echo "tag=$(TZ='Europe/Amsterdam' date +%Y.%m.%d.%H)" >> $GITHUB_OUTPUT
+          echo "repo=$(echo ${{ github.repository }} | tr [:upper:] [:lower:])" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Multiplatform docker build and push
+        uses: docker/build-push-action@v3
+        with:
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ steps.calver.outputs.repo }}:${{ steps.calver.outputs.tag }}
+            ghcr.io/${{ steps.calver.outputs.repo }}:latest
+          cache-from: type=registry,ref=ghcr.io/${{ steps.calver.outputs.repo }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ steps.calver.outputs.repo }}:buildcache,mode=max
+
+      - name: Generate release tag
+        id: tagger
+        uses: amitsingh-007/next-release-tag@v6.1.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tag_prefix: 'v'
+          tag_template: 'yyyy.mm.i'
+
+      - name: Create Tag
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag ${{ steps.tagger.outputs.next_release_tag }}
+          git push origin refs/tags/${{ steps.tagger.outputs.next_release_tag }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tagger.outputs.next_release_tag }}
+          name: Release ${{ steps.tagger.outputs.next_release_tag || 'draft' }}
+          generate_release_notes: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

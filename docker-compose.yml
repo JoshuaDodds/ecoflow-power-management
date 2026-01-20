@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  ecoflow-orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ecoflow-power-manager
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - ecoflow-net
+    # Optional: Add health check
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "python.*main.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Optional: Add logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  ecoflow-net:
+    driver: bridge

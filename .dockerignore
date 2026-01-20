@@ -1,0 +1,49 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment files (should be mounted or passed as env vars)
+.env
+.env.local
+
+# Documentation
+*.md
+!README.md
+
+# CI/CD
+.github/
+
+# Archives and simulations
+archive/
+simulations/
+
+# Docker
+docker/
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Misc
+Makefile
+LICENSE
