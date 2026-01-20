@@ -58,7 +58,7 @@ This system requires **TWO sets of credentials** to maintain a reliable, continu
 - **What:** API keys from the EcoFlow Developer Portal
 - **Purpose:** Required to send periodic "wakeup" packets (heartbeats) to keep the MQTT connection alive and streaming data
 - **API Endpoint:** `https://api-e.ecoflow.com/iot-open/sign/certification`
-- **Critical:** Without these, the MQTT broker connection will go silent after a few minutes
+- **Critical:** Without these, the MQTT broker connection will go silent after a few minutes or not wakeup at all. 
 
 #### Why Both Are Needed
 
@@ -103,7 +103,7 @@ The Developer API credentials enable the `ecoflow_cloud_bridge` service to:
 
 Many users (including the project maintainer) have reported:
 - No communication from EcoFlow after applying
-- Ability to log in and create API keys immediately after 24 hours
+- Ability to log in and create API keys immediately or after 24 hours
 - No manual approval step required
 
 #### Step 3: Generate Your API Keys
@@ -127,7 +127,7 @@ Many users (including the project maintainer) have reported:
 Add both sets of credentials to your `.env` file:
 
 ```bash
-# Cloud API Credentials (Standard Account)
+# Cloud API Credentials (Standard Account you use to sign into the Mobile App)
 ECOFLOW_USERNAME="your-email@example.com"
 ECOFLOW_PASSWORD="your-password"
 
@@ -143,12 +143,6 @@ ECOFLOW_SECRET_KEY="SK_yyyyyyyyyyyyyyyyyyyyyyyyyy"
 - Try the alternate region's portal
 - Check spam/junk folders for approval emails
 - Contact EcoFlow support: [https://support.ecoflow.com](https://support.ecoflow.com)
-
-**If the bridge fails to authenticate:**
-- Verify your Access Key starts with `AK_`
-- Verify your Secret Key starts with `SK_`
-- Check for extra spaces or quotes in your `.env` file
-- Ensure you're using the Developer API keys, not MQTT certificates
 
 ---
 
