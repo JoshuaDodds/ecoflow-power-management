@@ -1,0 +1,39 @@
+[Unit]
+Description=EcoFlow Power Management Agent
+Documentation=https://github.com/your-repo/ecoflow-power-management
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ecoflow/agents/linux
+
+# Environment variables - customize these for your setup
+Environment="MQTT_HOST=mosquitto.local"
+Environment="MQTT_PORT=1883"
+Environment="AGENT_ID=linux-agent"
+
+# Optional: Pre-shutdown commands
+# Environment="PRE_SHUTDOWN_CMD_1=docker stop $(docker ps -q)"
+# Environment="PRE_SHUTDOWN_CMD_2=systemctl stop microk8s"
+
+# Optional: Custom shutdown command
+# Environment="SHUTDOWN_CMD=sudo shutdown -h +1"
+
+# Path to the agent script
+ExecStart=/bin/bash /opt/ecoflow/agents/linux/shutdown-listener.sh
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=200
+StartLimitBurst=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ecoflow-agent
+
+[Install]
+WantedBy=multi-user.target
