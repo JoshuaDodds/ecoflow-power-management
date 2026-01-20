@@ -42,6 +42,115 @@ graph TD
 ### Prerequisites
 * Python 3.10+
 * A local MQTT Broker (e.g., Mosquitto) running and accessible.
+* **Both** EcoFlow Cloud API credentials AND Developer API credentials (see below)
+
+### Understanding EcoFlow API Credentials
+
+This system requires **TWO sets of credentials** to maintain a reliable, continuous MQTT connection to EcoFlow's cloud infrastructure:
+
+#### 1. Cloud API Credentials (Username & Password)
+- **What:** Your standard EcoFlow account email and password
+- **Purpose:** Used to authenticate and obtain temporary MQTT broker certificates
+- **API Endpoint:** `https://api.ecoflow.com/auth/login` → `/iot-auth/app/certification`
+- **Limitation:** These credentials alone are **not sufficient** for reliable operation
+
+#### 2. Developer API Credentials (Access Key & Secret Key)
+- **What:** API keys from the EcoFlow Developer Portal
+- **Purpose:** Required to send periodic "wakeup" packets (heartbeats) to keep the MQTT connection alive and streaming data
+- **API Endpoint:** `https://api-e.ecoflow.com/iot-open/sign/certification`
+- **Critical:** Without these, the MQTT broker connection will go silent after a few minutes
+
+#### Why Both Are Needed
+
+The EcoFlow MQTT broker requires **active heartbeat packets** to continue streaming device telemetry. Without periodic wakeup commands:
+- The connection appears established but **stops sending data**
+- No error messages are generated—the stream simply goes silent
+- The system cannot detect battery state changes or trigger shutdown policies
+
+The Developer API credentials enable the `ecoflow_cloud_bridge` service to:
+1. Authenticate using the signed API request format
+2. Send protobuf-encoded "Cmd 0" (quota/get-all) packets every 5 minutes
+3. Keep the data stream flowing continuously
+
+**In summary:** Cloud credentials get you connected; Developer credentials keep you connected.
+
+---
+
+### How to Obtain Developer API Access
+
+#### Step 1: Register for Developer Access
+
+1. Visit the **EcoFlow Developer Portal**:
+   - **EU Region:** [https://developer-eu.ecoflow.com](https://developer-eu.ecoflow.com)
+   - **US Region:** [https://developer-us.ecoflow.com](https://developer-us.ecoflow.com)
+   
+2. Click **"Sign Up"** or **"Apply for Access"**
+
+3. Fill out the application form with:
+   - Your EcoFlow account email (same as your app login)
+   - Company/Organization name (can be personal/individual)
+   - Use case description (e.g., "Home automation and power monitoring")
+
+4. Submit the application
+
+#### Step 2: Access May Be Instant (No Waiting Required)
+
+**Important Update (2026):** The approval process appears to be **automated** now:
+
+- You may **not receive** a confirmation email
+- You may **not receive** an "approved" notification
+- **Try logging in 24 hours after applying** using your EcoFlow account credentials
+
+Many users (including the project maintainer) have reported:
+- No communication from EcoFlow after applying
+- Ability to log in and create API keys immediately after 24 hours
+- No manual approval step required
+
+#### Step 3: Generate Your API Keys
+
+1. **Sign in** to the Developer Portal using your **EcoFlow account credentials** (same email/password as the mobile app)
+
+2. Navigate to **"Access Key Management"** or **"API Keys"**
+
+3. Click **"Create Access Key"** or **"Generate New Key"**
+
+4. **Save both values immediately:**
+   ```
+   Access Key:  AK_xxxxxxxxxxxxxxxxxxxxxxxxxx
+   Secret Key:  SK_yyyyyyyyyyyyyyyyyyyyyyyyyy
+   ```
+
+5. ⚠️ **Warning:** The Secret Key is only shown **once**. Store it securely (password manager, `.env` file, etc.)
+
+#### Step 4: Configure Your `.env` File
+
+Add both sets of credentials to your `.env` file:
+
+```bash
+# Cloud API Credentials (Standard Account)
+ECOFLOW_USERNAME="your-email@example.com"
+ECOFLOW_PASSWORD="your-password"
+
+# Developer API Credentials (From Developer Portal)
+ECOFLOW_ACCESS_KEY="AK_xxxxxxxxxxxxxxxxxxxxxxxxxx"
+ECOFLOW_SECRET_KEY="SK_yyyyyyyyyyyyyyyyyyyyyyyyyy"
+```
+
+#### Troubleshooting Developer Access
+
+**If you cannot log in after 24 hours:**
+- Verify you're using the correct regional portal (EU vs US)
+- Try the alternate region's portal
+- Check spam/junk folders for approval emails
+- Contact EcoFlow support: [https://support.ecoflow.com](https://support.ecoflow.com)
+
+**If the bridge fails to authenticate:**
+- Verify your Access Key starts with `AK_`
+- Verify your Secret Key starts with `SK_`
+- Check for extra spaces or quotes in your `.env` file
+- Ensure you're using the Developer API keys, not MQTT certificates
+
+---
 
 ### 1. Clone & Prepare
 ```bash
@@ -56,11 +165,18 @@ pip install -r requirements.txt
 Copy `.env-example` to `.env` and configure:
 
 ```bash
-# Credentials
-ECOFLOW_USER="email@example.com"
-ECOFLOW_PASS="password"
+# Cloud API Credentials (Standard Account)
+ECOFLOW_USERNAME="your-email@example.com"
+ECOFLOW_PASSWORD="your-password"
 
-# MQTT
+# Developer API Credentials (From Developer Portal)
+ECOFLOW_ACCESS_KEY="AK_xxxxxxxxxxxxxxxxxxxxxxxxxx"
+ECOFLOW_SECRET_KEY="SK_yyyyyyyyyyyyyyyyyyyyyyyyyy"
+
+# Device Serial Numbers
+ECOFLOW_DEVICE_LIST="R631ZEB4WH123456,R631ZEB4WH789012"
+
+# Local MQTT Broker
 MQTT_HOST="localhost"
 
 # Policy Rules
