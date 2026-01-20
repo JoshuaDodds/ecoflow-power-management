@@ -30,18 +30,25 @@ class PolicyEngine:
         self.mqtt_port = int(os.environ.get("MQTT_PORT", 1883))
         self.mqtt_base = os.environ.get("ECOFLOW_BASE", "bridge-ecoflow")
 
+        # Initialize critical attributes with defaults (ensures they always exist)
+        self.policy_soc_min = 10
+        self.policy_debounce_sec = 180
+        self.policy_cooldown_sec = 300
+        self.max_data_gap_sec = 60
+        self.agent_shutdown_delay = 60
+        self.device_to_agents = {}
+
         try:
             self.policy_soc_min = int(os.environ.get("POLICY_SOC_MIN", "10"))
             self.policy_debounce_sec = int(os.environ.get("POLICY_DEBOUNCE_SEC", "180"))
             self.policy_cooldown_sec = int(os.environ.get("POLICY_COOLDOWN_SEC", "300"))
-            self.max_data_gap_sec = 60
 
             # JSON Mapping: {"Meterkast": ["agent1"], "Study": ["agent2"]}
             raw_agents = os.environ.get("DEVICE_TO_AGENTS_JSON", "{}")
-            self.device_to_agents = json.loads(raw_agents)
-
-            # How long is the shutdown delay on the client? (Default assumption 60s)
-            self.agent_shutdown_delay = 60
+            if raw_agents.strip():  # Only parse if not empty
+                self.device_to_agents = json.loads(raw_agents)
+            else:
+                logger.warning("DEVICE_TO_AGENTS_JSON is empty - no agents will be managed")
 
             logger.info(
                 f"Policy Active: Shutdown if SOC < {self.policy_soc_min}% AND Grid=Lost for > {self.policy_debounce_sec}s")
@@ -49,7 +56,7 @@ class PolicyEngine:
 
         except (KeyError, ValueError, json.JSONDecodeError) as e:
             logger.error(f"Configuration Error: {e}")
-            self.device_to_agents = {}
+            logger.warning("Using default configuration values")
 
         # State tracking
         self.device_states = {}

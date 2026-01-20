@@ -5,6 +5,7 @@ def load_env():
     """
     Searches for a .env file in the project root (up to 2 levels up)
     and loads variables into os.environ.
+    Supports multi-line values enclosed in quotes.
     """
     # Start from the file's current location and go up
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -30,15 +31,33 @@ def load_env():
 
     try:
         with open(env_path, 'r') as f:
-            for line in f:
-                line = line.strip()
+            lines = f.readlines()
+            i = 0
+            while i < len(lines):
+                line = lines[i].strip()
+                
+                # Skip empty lines and comments
                 if not line or line.startswith('#'):
+                    i += 1
                     continue
 
                 if '=' in line:
                     key, value = line.split('=', 1)
                     key = key.strip()
                     value = value.strip()
+
+                    # Check if value starts with a quote but doesn't end with one (multi-line value)
+                    if (value.startswith("'") and not value.endswith("'")) or \
+                       (value.startswith('"') and not value.endswith('"')):
+                        # Multi-line value - collect until we find the closing quote
+                        opening_quote = value[0]
+                        i += 1
+                        while i < len(lines):
+                            next_line = lines[i].rstrip('\n\r')
+                            value += '\n' + next_line
+                            if next_line.rstrip().endswith(opening_quote):
+                                break
+                            i += 1
 
                     # Remove surrounding quotes
                     if (value.startswith('"') and value.endswith('"')) or \
@@ -48,6 +67,8 @@ def load_env():
                     # Only set if not already set (don't overwrite system env vars)
                     if key not in os.environ:
                         os.environ[key] = value
+                
+                i += 1
     except Exception as e:
         print(f"Error loading .env: {e}")
 
