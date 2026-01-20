@@ -50,13 +50,10 @@ jobs:
           cache-from: type=registry,ref=ghcr.io/${{ steps.calver.outputs.repo }}:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ steps.calver.outputs.repo }}:buildcache,mode=max
 
-      - name: Generate release tag
+      - name: Set release tag
         id: tagger
-        uses: amitsingh-007/next-release-tag@v6.1.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          tag_prefix: ''
-          tag_template: 'yyyy.mm.dd.HH'
+        run: |
+          echo "next_release_tag=${{ steps.calver.outputs.tag }}" >> $GITHUB_OUTPUT
 
       - name: Create Tag
         run: |
