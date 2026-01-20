@@ -60,59 +60,93 @@ log "Topic: ${MQTT_TOPIC}"
 # Check if mosquitto_sub is available
 if ! command -v mosquitto_sub &> /dev/null; then
     log "ERROR: mosquitto_sub not found"
-    log "Please install Mosquitto client: brew install mosquitto"
+    log "Please install Mosquitto client (see README.md for installation options)"
     exit 1
 fi
 
 log "Listening for commands..."
 
 # Listen indefinitely for MQTT messages
-mosquitto_sub -h "${MQTT_BROKER}" -p "${MQTT_PORT}" -t "${MQTT_TOPIC}" | while read -r message; do
-    log "Received message: ${message}"
+# Buffer multi-line JSON messages
+buffer=""
+in_json=false
+
+mosquitto_sub -h "${MQTT_BROKER}" -p "${MQTT_PORT}" -t "${MQTT_TOPIC}" | while IFS= read -r line; do
+    # Skip empty lines
+    if [ -z "$line" ]; then
+        continue
+    fi
     
-    # Extract action from JSON using grep/sed (no jq dependency)
-    action=$(echo "${message}" | grep -o '"action"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"\([^"]*\)".*/\1/')
+    # Trim leading/trailing whitespace
+    trimmed=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     
-    case "${action}" in
-        shutdown)
-            log "SHUTDOWN command received!"
+    # Detect start of JSON message
+    if [[ "$trimmed" == "{" ]]; then
+        in_json=true
+        buffer="{"
+        continue
+    fi
+    
+    # If we're inside a JSON message, buffer the line
+    if [ "$in_json" = true ]; then
+        # Append line with a space separator
+        buffer="$buffer $trimmed"
+        
+        # Detect end of JSON message
+        if [[ "$trimmed" == "}" ]]; then
+            in_json=false
+            message="$buffer"
+            buffer=""
             
-            # Execute pre-shutdown commands
-            if [ ${#PRE_SHUTDOWN_CMDS[@]} -gt 0 ]; then
-                log "Executing ${#PRE_SHUTDOWN_CMDS[@]} pre-shutdown command(s)..."
-                for idx in "${!PRE_SHUTDOWN_CMDS[@]}"; do
-                    cmd="${PRE_SHUTDOWN_CMDS[$idx]}"
-                    num=$((idx + 1))
-                    log "Pre-shutdown ${num}/${#PRE_SHUTDOWN_CMDS[@]}: ${cmd}"
+            log "Received message: ${message}"
+            
+            # Extract action from JSON using grep/sed (no jq dependency)
+            action=$(echo "${message}" | grep -o '"action"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"\([^"]*\)".*/\1/')
+            
+            case "${action}" in
+                shutdown)
+                    log "SHUTDOWN command received!"
                     
-                    if eval "${cmd}" 2>&1 | while IFS= read -r line; do log "  ${line}"; done; then
-                        log "✓ Command succeeded"
-                    else
-                        exit_code=$?
-                        log "✗ Command failed with exit code ${exit_code}"
+                    # Execute pre-shutdown commands
+                    if [ ${#PRE_SHUTDOWN_CMDS[@]} -gt 0 ]; then
+                        log "Executing ${#PRE_SHUTDOWN_CMDS[@]} pre-shutdown command(s)..."
+                        for idx in "${!PRE_SHUTDOWN_CMDS[@]}"; do
+                            cmd="${PRE_SHUTDOWN_CMDS[$idx]}"
+                            num=$((idx + 1))
+                            log "Pre-shutdown ${num}/${#PRE_SHUTDOWN_CMDS[@]}: ${cmd}"
+                            
+                            if eval "${cmd}" 2>&1 | while IFS= read -r line; do log "  ${line}"; done; then
+                                log "✓ Command succeeded"
+                            else
+                                exit_code=$?
+                                log "✗ Command failed with exit code ${exit_code}"
+                            fi
+                        done
                     fi
-                done
-            fi
-            
-            # Execute shutdown command
-            log "Initiating system shutdown..."
-            log "Command: ${SHUTDOWN_CMD}"
-            eval "${SHUTDOWN_CMD}"
-            ;;
-            
-        abort)
-            log "ABORT command received!"
-            log "Canceling pending shutdown..."
-            log "Command: ${ABORT_CMD}"
-            
-            # Cancel pending shutdown
-            eval "${ABORT_CMD}" 2>/dev/null || log "No pending shutdown to cancel"
-            ;;
-            
-        *)
-            log "Unknown action: ${action}"
-            ;;
-    esac
+                    
+                    # Execute shutdown command
+                    log "Initiating system shutdown..."
+                    log "Command: ${SHUTDOWN_CMD}"
+                    eval "${SHUTDOWN_CMD}"
+                    ;;
+                    
+                abort)
+                    log "ABORT command received!"
+                    log "Canceling pending shutdown..."
+                    log "Command: ${ABORT_CMD}"
+                    
+                    # Cancel pending shutdown
+                    eval "${ABORT_CMD}" 2>/dev/null || log "No pending shutdown to cancel"
+                    ;;
+                    
+                *)
+                    if [ -n "${action}" ]; then
+                        log "Unknown action: ${action}"
+                    fi
+                    ;;
+            esac
+        fi
+    fi
 done
 
 log "MQTT listener stopped unexpectedly"
