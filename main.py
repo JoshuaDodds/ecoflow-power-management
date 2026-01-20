@@ -6,6 +6,15 @@ import sys
 import logging
 import importlib.util
 
+# Import version
+try:
+    from __version__ import __version__
+except ImportError:
+    __version__ = "unknown"
+
+# Load environment variables from .env file
+from utils import env_loader
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -52,7 +61,12 @@ def run_service(name, file_path, module_name):
 
 
 def main():
-    logger.info("--- EcoFlow Power Management Orchestrator Starting ---")
+    logger.info(f"--- EcoFlow Power Management Orchestrator v{__version__} Starting ---")
+    
+    # Validate configuration before starting services
+    from utils.config_validator import ConfigValidator
+    ConfigValidator.validate_all()
+    ConfigValidator.print_config_summary()
 
     processes = []
 

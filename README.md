@@ -1,5 +1,11 @@
 # EcoFlow Power Management Orchestrator
 
+![Version](https://img.shields.io/badge/version-0.1.0--alpha-orange)
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+
+> **⚠️ Alpha Release:** This is an early release for testing and feedback. Please test thoroughly before using in production.
+
 **A lightweight, MQTT-based power-aware shutdown system for heterogeneous environments (Linux, Windows, NAS).**
 
 This system acts as a bridge between the proprietary EcoFlow MQTT cloud and your local infrastructure. It consumes device telemetry, derives a normalized battery State-of-Charge (SoC), and—when configurable thresholds are reached—initiates clean, host-local shutdown procedures across machines powered by those devices.
@@ -148,7 +154,7 @@ ECOFLOW_SECRET_KEY="SK_yyyyyyyyyyyyyyyyyyyyyyyyyy"
 
 ### 1. Clone & Prepare
 ```bash
-git clone [https://github.com/your-repo/ecoflow-power-management.git](https://github.com/your-repo/ecoflow-power-management.git)
+git clone https://github.com/JoshuaDodds/ecoflow-power-management.git
 cd ecoflow-power-management
 python3 -m venv venv
 source venv/bin/activate
@@ -294,3 +300,17 @@ Test your policy logic without draining your actual physical batteries. We provi
 * **No remote execution:** We do not SSH into boxes. They must subscribe to us.
 * **No Windows binaries:** We do not ship `.exe` agents. Native scripts are safer and more auditable.
 * **No vendor SDK dependency:** We decode the raw protobuf directly.
+
+---
+
+## 🤖 AI Collaboration Disclosure
+
+This project was developed in collaboration with AI assistants (Google Gemini 3.0 Pro and Anthropic Claude Sonnet 4.5) to accelerate development, improve code quality, and enhance documentation. All code has been reviewed, tested, and validated by the project maintainer.
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+Copyright (c) 2026 Joshua Dodds
