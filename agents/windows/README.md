@@ -48,8 +48,12 @@ Use **Task Scheduler** to run at startup:
 4. Actions tab:
    - New → Action: Start a program
    - Program: `powershell.exe`
-   - Arguments: `-ExecutionPolicy Bypass -File "C:\path\to\agents\windows\shutdown-listener.ps1"`
-   - Start in: `C:\path\to\agents\windows`
+   - Arguments: `-ExecutionPolicy Bypass -File "C:\bin\ecoflow-agent\shutdown-listener.ps1"`
+   - Start in: `C:\bin\ecoflow-agent`
+
+> [!NOTE]
+> Logging is automatically enabled. By default, logs are written to `ecoflow-agent.log` in the same directory as the script.
+> To use a custom log location, set the `LOG_FILE` environment variable (e.g., `C:\logs\ecoflow-agent.log`).
 
 5. Conditions tab:
    - Uncheck "Start the task only if the computer is on AC power"
@@ -57,6 +61,33 @@ Use **Task Scheduler** to run at startup:
 6. Settings tab:
    - If the task fails, restart every: 1 minute
    - Attempt to restart up to: 3 times
+
+### Viewing Logs
+
+**Option 1: View the log file**
+
+By default, the log file is located at: `C:\bin\ecoflow-agent\ecoflow-agent.log`
+
+```powershell
+# View the entire log
+Get-Content C:\bin\ecoflow-agent\ecoflow-agent.log
+
+# View last 20 lines
+Get-Content C:\bin\ecoflow-agent\ecoflow-agent.log -Tail 20
+
+# Follow the log in real-time (like tail -f)
+Get-Content C:\bin\ecoflow-agent\ecoflow-agent.log -Wait -Tail 20
+```
+
+**Option 2: Check Task Scheduler History**
+1. Open Task Scheduler
+2. Find your task: `EcoFlow Power Agent`
+3. Click the **History** tab to see task execution events
+
+**Option 3: Check Windows Event Viewer**
+1. Open Event Viewer
+2. Navigate to: **Windows Logs → Application**
+3. Look for events from source **Task Scheduler**
 
 ## Configuration
 

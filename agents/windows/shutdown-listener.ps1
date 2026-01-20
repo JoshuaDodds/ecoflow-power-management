@@ -52,11 +52,24 @@ for ($i = 1; $i -le 9; $i++) {
 $SHUTDOWN_CMD = if ($env:SHUTDOWN_CMD) { $env:SHUTDOWN_CMD } else { "shutdown.exe /s /t 60 /f /c 'EcoFlow Critical Battery Shutdown'" }
 $ABORT_CMD = if ($env:ABORT_CMD) { $env:ABORT_CMD } else { "shutdown.exe /a" }
 
+# Log file path (configurable via environment variable)
+$LOG_FILE = if ($env:LOG_FILE) { $env:LOG_FILE } else { Join-Path $PSScriptRoot "ecoflow-agent.log" }
+
 # ========== LOGGING FUNCTION ==========
 function Write-Log {
     param([string]$Message)
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Write-Host "[$timestamp] $Message"
+    $logMessage = "[$timestamp] $Message"
+    
+    # Write to console
+    Write-Host $logMessage
+    
+    # Write to log file
+    try {
+        Add-Content -Path $LOG_FILE -Value $logMessage -ErrorAction SilentlyContinue
+    } catch {
+        # Silently ignore file logging errors to prevent script from failing
+    }
 }
 
 # ========== MAIN SCRIPT ==========
@@ -99,67 +112,84 @@ if (-not $mosquittoPath) {
 # Listen indefinitely for MQTT messages
 & $mosquittoPath -h $MQTT_BROKER -p $MQTT_PORT -t $MQTT_TOPIC | ForEach-Object {
     $message = $_
-    Write-Log "Received message: $message"
     
-    try {
-        # Parse JSON command
-        $command = $message | ConvertFrom-Json
-        $action = $command.action
+    # Skip empty lines
+    if ([string]::IsNullOrWhiteSpace($message)) {
+        return
+    }
+    
+    # Only log and process if it looks like a complete JSON object
+    if ($message.Trim().StartsWith("{") -and $message.Trim().EndsWith("}")) {
+        Write-Log "Received message: $message"
         
-        switch ($action) {
-            "shutdown" {
-                Write-Log "SHUTDOWN command received!"
-                
-                # Execute pre-shutdown commands
-                if ($PRE_SHUTDOWN_CMDS.Count -gt 0) {
-                    Write-Log "Executing $($PRE_SHUTDOWN_CMDS.Count) pre-shutdown command(s)..."
-                    for ($i = 0; $i -lt $PRE_SHUTDOWN_CMDS.Count; $i++) {
-                        $cmd = $PRE_SHUTDOWN_CMDS[$i]
-                        $idx = $i + 1
-                        Write-Log "Pre-shutdown $idx/$($PRE_SHUTDOWN_CMDS.Count): $cmd"
-                        
-                        try {
-                            $result = Invoke-Expression $cmd 2>&1
-                            if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
-                                Write-Log "Command succeeded"
-                                if ($result) {
-                                    Write-Log "Output: $result"
-                                }
-                            } else {
-                                Write-Log "Command failed with exit code $LASTEXITCODE"
-                                if ($result) {
-                                    Write-Log "Error: $result"
+        try {
+            # Parse JSON command
+            $command = $message | ConvertFrom-Json
+            $action = $command.action
+            
+            switch ($action) {
+                "shutdown" {
+                    Write-Log "SHUTDOWN command received!"
+                    
+                    # Execute pre-shutdown commands
+                    if ($PRE_SHUTDOWN_CMDS.Count -gt 0) {
+                        Write-Log "Executing $($PRE_SHUTDOWN_CMDS.Count) pre-shutdown command(s)..."
+                        for ($i = 0; $i -lt $PRE_SHUTDOWN_CMDS.Count; $i++) {
+                            $cmd = $PRE_SHUTDOWN_CMDS[$i]
+                            $idx = $i + 1
+                            Write-Log "Pre-shutdown $idx/$($PRE_SHUTDOWN_CMDS.Count): $cmd"
+                            
+                            try {
+                                $result = Invoke-Expression $cmd 2>&1
+                                if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
+                                    Write-Log "Command succeeded"
+                                    if ($result) {
+                                        Write-Log "Output: $result"
+                                    }
+                                } else {
+                                    Write-Log "Command failed with exit code $LASTEXITCODE"
+                                    if ($result) {
+                                        Write-Log "Error: $result"
+                                    }
                                 }
                             }
+                            catch {
+                                Write-Log "Command failed: $_"
+                            }
                         }
-                        catch {
-                            Write-Log "Command failed: $_"
-                        }
+                    }
+                    
+                    # Execute shutdown command
+                    Write-Log "Initiating system shutdown..."
+                    Write-Log "Command: $SHUTDOWN_CMD"
+                    Invoke-Expression $SHUTDOWN_CMD
+                }
+                
+                "abort" {
+                    Write-Log "ABORT command received!"
+                    Write-Log "Canceling pending shutdown..."
+                    Write-Log "Command: $ABORT_CMD"
+                    
+                    # Cancel any pending shutdown
+                    try {
+                        Invoke-Expression $ABORT_CMD 2>&1 | Out-Null
+                        Write-Log "Shutdown canceled successfully"
+                    }
+                    catch {
+                        Write-Log "No pending shutdown to cancel"
                     }
                 }
                 
-                # Execute shutdown command
-                Write-Log "Initiating system shutdown..."
-                Write-Log "Command: $SHUTDOWN_CMD"
-                Invoke-Expression $SHUTDOWN_CMD
-            }
-            
-            "abort" {
-                Write-Log "ABORT command received!"
-                Write-Log "Canceling pending shutdown..."
-                Write-Log "Command: $ABORT_CMD"
-                
-                # Cancel any pending shutdown
-                Invoke-Expression $ABORT_CMD
-            }
-            
-            default {
-                Write-Log "Unknown action: $action"
+                default {
+                    if ($action) {
+                        Write-Log "Unknown action: $action"
+                    }
+                }
             }
         }
-    }
-    catch {
-        Write-Log "Error processing message: $_"
+        catch {
+            # Silently ignore JSON parsing errors for incomplete lines
+        }
     }
 }
 
