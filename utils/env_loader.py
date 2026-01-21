@@ -45,24 +45,32 @@ def load_env():
                     key, value = line.split('=', 1)
                     key = key.strip()
                     value = value.strip()
+                    
+                    # Strip inline comments (everything after # that's not in quotes)
+                    if '#' in value and not (value.startswith('"') or value.startswith("'")):
+                        value = value.split('#')[0].strip()
 
-                    # Check if value starts with a quote but doesn't end with one (multi-line value)
-                    if (value.startswith("'") and not value.endswith("'")) or \
-                       (value.startswith('"') and not value.endswith('"')):
-                        # Multi-line value - collect until we find the closing quote
-                        opening_quote = value[0]
-                        i += 1
-                        while i < len(lines):
-                            next_line = lines[i].rstrip('\n\r')
-                            value += '\n' + next_line
-                            if next_line.rstrip().endswith(opening_quote):
-                                break
+                    # Handle multi-line values (JSON, etc.)
+                    if value.startswith(('"', "'")):
+                        quote_char = value[0]
+                        # Check if value ends with matching quote
+                        if not value.endswith(quote_char):
+                            # Multi-line value - collect until closing quote
                             i += 1
+                            while i < len(lines):
+                                next_line = lines[i].rstrip()
+                                value += '\n' + next_line
+                                if next_line.endswith(quote_char):
+                                    break
+                                i += 1
 
-                    # Remove surrounding quotes
-                    if (value.startswith('"') and value.endswith('"')) or \
-                            (value.startswith("'") and value.endswith("'")):
-                        value = value[1:-1]
+                        # Remove surrounding quotes
+                        if (value.startswith('"') and value.endswith('"')) or \
+                                (value.startswith("'") and value.endswith("'")):
+                            value = value[1:-1]
+                    
+                    # Final trim
+                    value = value.strip()
 
                     # Only set if not already set (don't overwrite system env vars)
                     if key not in os.environ:
