@@ -1,6 +1,6 @@
 # EcoFlow Power Management Orchestrator
 
-![Version](https://img.shields.io/badge/version-2026.01.21.10-blue)
+![Version](https://img.shields.io/badge/version-dynamic-blue)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 

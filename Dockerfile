@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+# Build argument for version (set by GitHub workflow)
+ARG APP_VERSION=dev
+
 # Set working directory
 WORKDIR /app
 
@@ -11,6 +14,7 @@ RUN apt-get update && \
 
 # Copy requirements first for better layer caching
 COPY requirements.txt .
+
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
@@ -31,6 +35,7 @@ USER ecoflow
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV APP_VERSION=${APP_VERSION}
 
 # Health check (optional - checks if main process is running)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

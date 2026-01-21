@@ -4,9 +4,17 @@ All notable changes to the EcoFlow Power Management project will be documented i
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-**Versioning:** This project uses [Calendar Versioning](https://calver.org/) with format `YYYY.MM.DD.HH` (Europe/Amsterdam timezone) to match container image tags.
+**Versioning:** This project uses [Calendar Versioning](https://calver.org/) with format `YYYY.MM.DD-BUILD` where BUILD is the git commit count. Version is determined dynamically at runtime (not hardcoded). Container images are tagged with the build-time version.
 
-## [2026.01.21.10] - 2026-01-21
+## [Unreleased]
+
+### Changed
+- **Versioning scheme**: Switched to dynamic CalVer (`YYYY.MM.DD-BUILD`)
+  - Version determined at runtime (not hardcoded in source)
+  - BUILD = git commit count (monotonically increasing)
+  - Allows unlimited releases per day
+  - Matches GitHub workflow container image versioning
+  - Eliminates version collision between code and CI/CD
 
 ### Changed
 - **Versioning scheme**: Switched from SemVer to CalVer (`YYYY.MM.DD.HH`)
