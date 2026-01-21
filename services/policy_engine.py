@@ -12,11 +12,13 @@ import json
 import time
 import logging
 import uuid
+import threading
 import paho.mqtt.client as mqtt
 
 # --- Import Utils ---
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils import env_loader
+from utils.notifier import Notifier
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
@@ -37,6 +39,12 @@ class PolicyEngine:
         self.max_data_gap_sec = 60
         self.agent_shutdown_delay = 60
         self.device_to_agents = {}
+        
+        # Initialize notifier
+        self.notifier = Notifier()
+        
+        # Track SOC levels for 2% increment alerts
+        self.last_soc_alert = {}  # {device: last_alerted_soc}
 
         try:
             self.policy_soc_min = int(os.environ.get("POLICY_SOC_MIN", "10"))
@@ -65,15 +73,54 @@ class PolicyEngine:
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="ecoflow-policy-engine")
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
+        
+        # Track data staleness notifications
+        self.staleness_notified = {}  # {device: timestamp_of_last_notification}
 
     def run(self):
         logger.info(f"Connecting to MQTT broker at {self.mqtt_host}:{self.mqtt_port}...")
         try:
+            # Start staleness monitoring thread
+            staleness_thread = threading.Thread(target=self.monitor_staleness, daemon=True)
+            staleness_thread.start()
+            
             self.client.connect(self.mqtt_host, self.mqtt_port, 60)
             self.client.loop_forever()
         except Exception as e:
             logger.error(f"Failed to connect or run MQTT client: {e}")
             time.sleep(5)
+    
+    def monitor_staleness(self):
+        """Background thread to monitor data staleness"""
+        STALE_THRESHOLD = 300  # 5 minutes in seconds
+        CHECK_INTERVAL = 60    # Check every minute
+        NOTIFICATION_COOLDOWN = 3600  # Don't re-notify for 1 hour
+        
+        while True:
+            try:
+                time.sleep(CHECK_INTERVAL)
+                now = time.time()
+                
+                for device, state in self.device_states.items():
+                    last_msg_ts = state.get("last_msg_ts", 0)
+                    time_since_msg = now - last_msg_ts
+                    
+                    # Check if data is stale
+                    if time_since_msg > STALE_THRESHOLD:
+                        # Check if we've already notified recently
+                        last_notified = self.staleness_notified.get(device, 0)
+                        if now - last_notified > NOTIFICATION_COOLDOWN:
+                            minutes = int(time_since_msg / 60)
+                            self.notifier.data_stale(device, minutes)
+                            self.staleness_notified[device] = now
+                            logger.warning(f"[{device}] Data stale: no updates for {minutes} minutes")
+                    else:
+                        # Data is fresh, reset notification flag
+                        if device in self.staleness_notified:
+                            del self.staleness_notified[device]
+                            
+            except Exception as e:
+                logger.error(f"Staleness monitoring error: {e}")
 
     def on_connect(self, client, userdata, flags, rc, properties=None):
         if rc == 0:
@@ -106,7 +153,8 @@ class PolicyEngine:
             self.device_states[device] = {
                 "start_time": None,
                 "last_msg_ts": now,
-                "last_trigger": 0.0
+                "last_trigger": 0.0,
+                "grid_lost_since": None  # Track when grid was lost for notifications
             }
 
         state = self.device_states[device]
@@ -123,6 +171,27 @@ class PolicyEngine:
 
         # Critical Check
         danger_condition = (not grid_connected) and (soc <= self.policy_soc_min)
+        grid_lost = not grid_connected
+        
+        # Notify on grid loss (once per event)
+        if grid_lost and state.get("grid_lost_since") is None:
+            state["grid_lost_since"] = now
+            self.notifier.grid_lost(device)
+            logger.info(f"[{device}] Grid power lost - notification sent")
+        
+        # Notify on grid restoration
+        if not grid_lost and state.get("grid_lost_since") is not None:
+            self.notifier.grid_restored(device)
+            logger.info(f"[{device}] Grid power restored - notification sent")
+            state["grid_lost_since"] = None
+        
+        # SOC warnings (every 2% drop when near threshold)
+        if soc < self.policy_soc_min + 10:  # Start warnings 10% above threshold
+            last_alert = self.last_soc_alert.get(device, 100)
+            if soc <= last_alert - 2:  # 2% drop
+                self.notifier.soc_warning(device, soc, self.policy_soc_min)
+                self.last_soc_alert[device] = soc
+                logger.info(f"[{device}] SOC warning sent: {soc}%")
 
         if danger_condition:
             # --- DANGER ---
@@ -137,7 +206,9 @@ class PolicyEngine:
 
                     if time_since_last_trigger >= self.policy_cooldown_sec:
                         logger.error(f"[{device}] SHUTDOWN TRIGGERED. Sending Kill Command.")
+                        agents = self.device_to_agents.get(device, [])
                         self.send_command(device, "shutdown", f"Critical: Grid Lost & SoC {soc}%")
+                        self.notifier.shutdown_sent(device, agents)
                         state["last_trigger"] = now
 
         else:

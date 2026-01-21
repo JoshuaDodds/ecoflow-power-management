@@ -1,6 +1,6 @@
 # EcoFlow Power Management Orchestrator
 
-![Version](https://img.shields.io/badge/version-dynamic-blue)
+![Version](https://img.shields.io/github/v/release/JoshuaDodds/ecoflow-power-management?include_prereleases&label=version)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 
@@ -327,7 +327,7 @@ Test your policy logic without draining your actual physical batteries. We provi
 
 ## 🤖 AI Collaboration Disclosure
 
-This project was developed in collaboration with AI assistants (Google Gemini 3.0 Pro and Anthropic Claude Sonnet 4.5) to accelerate development, improve code quality, and enhance documentation. All code has been reviewed, tested, and validated by the project maintainer.
+This project was developed in collaboration with AI assistance (Google Gemini 3.0 Pro and Anthropic Claude Sonnet 4.5) to accelerate development, improve code quality, and enhance documentation. All code has been reviewed, tested, and validated by the project maintainer.
 
 ---
 

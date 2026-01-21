@@ -66,6 +66,14 @@ def main():
     from utils.config_validator import ConfigValidator
     ConfigValidator.validate_all()
     ConfigValidator.print_config_summary()
+    
+    # Send startup notification
+    try:
+        from utils.notifier import Notifier
+        notifier = Notifier()
+        notifier.system_startup(__version__)
+    except Exception as e:
+        logger.warning(f"Startup notification failed: {e}")
 
     processes = []
 
