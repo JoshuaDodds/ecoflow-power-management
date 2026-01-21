@@ -2,12 +2,17 @@
 
 All notable changes to the EcoFlow Power Management project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.2.0-alpha] - 2026-01-21
+**Versioning:** This project uses [Calendar Versioning](https://calver.org/) with format `YYYY.MM.DD.HH` (Europe/Amsterdam timezone) to match container image tags.
+
+## [2026.01.21.10] - 2026-01-21
 
 ### Changed
+- **Versioning scheme**: Switched from SemVer to CalVer (`YYYY.MM.DD.HH`)
+  - Matches GitHub workflow container image versioning
+  - Eliminates confusion between release tags and image tags
+  - All releases now use consistent CalVer format
 - **BREAKING**: Removed Cloud API credentials requirement (username/password)
   - Only Developer API credentials (Access Key/Secret Key) now required
   - Simplified setup process significantly
@@ -22,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configuration examples and troubleshooting
 - **tools/README.md**: Explains legacy `ecoflow_get_mqtt_login.sh` script
 - **Quick Start section** in README with 30-second overview
+- **Documentation section** in README linking to SETUP.md, DOCKER.md, CHANGELOG.md
 - Architecture clarification: Mosquitto bridge config NOT needed
 - AI collaboration disclosure (Gemini 3.0 Pro & Claude Sonnet 4.5)
 
@@ -105,6 +111,6 @@ This is an **alpha release** intended for early testing and feedback. While the 
 
 ---
 
-[0.2.0-alpha]: https://github.com/JoshuaDodds/ecoflow-power-management/releases/tag/v0.2.0-alpha
+[2026.01.21.10]: https://github.com/JoshuaDodds/ecoflow-power-management/releases/tag/2026.01.21.10
 [0.1.0-alpha]: https://github.com/JoshuaDodds/ecoflow-power-management/releases/tag/v0.1.0-alpha
 

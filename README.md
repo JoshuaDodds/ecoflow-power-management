@@ -1,6 +1,6 @@
 # EcoFlow Power Management Orchestrator
 
-![Version](https://img.shields.io/badge/version-0.2.0--alpha-orange)
+![Version](https://img.shields.io/badge/version-2026.01.21.10-blue)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 
@@ -15,6 +15,12 @@ The system is intentionally:
 * **Vendor-agnostic:** All coordination happens over standard MQTT.
 * **Fail-safe:** No direct SSH, WinRM, or remote execution is required.
 * **Host-local execution:** Each machine listens for a command and decides how to shut itself down.
+
+## 📚 Documentation
+
+- **[SETUP.md](SETUP.md)** - Complete step-by-step installation guide
+- **[DOCKER.md](DOCKER.md)** - Container deployment instructions
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
 
 ---
 
