@@ -12,8 +12,6 @@ class ConfigValidator:
     """Validates configuration and provides helpful error messages"""
     
     REQUIRED_CREDENTIALS = [
-        ("ECOFLOW_USERNAME", "Your EcoFlow account email"),
-        ("ECOFLOW_PASSWORD", "Your EcoFlow account password"),
         ("ECOFLOW_ACCESS_KEY", "Developer API Access Key"),
         ("ECOFLOW_SECRET_KEY", "Developer API Secret Key"),
         ("ECOFLOW_DEVICE_LIST", "Comma-separated device serial numbers"),
@@ -108,11 +106,6 @@ class ConfigValidator:
         print("="*70)
         
         # Credentials (masked)
-        username = os.environ.get("ECOFLOW_USERNAME", "")
-        if username:
-            masked_user = username[:3] + "***" + username.split("@")[-1] if "@" in username else "***"
-            print(f"  EcoFlow User:    {masked_user}")
-        
         access_key = os.environ.get("ECOFLOW_ACCESS_KEY", "")
         if access_key:
             print(f"  Access Key:      {access_key[:8]}***")

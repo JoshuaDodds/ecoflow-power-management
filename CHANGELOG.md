@@ -5,7 +5,45 @@ All notable changes to the EcoFlow Power Management project will be documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0-alpha] - 2026-01-21
+
+### Changed
+- **BREAKING**: Removed Cloud API credentials requirement (username/password)
+  - Only Developer API credentials (Access Key/Secret Key) now required
+  - Simplified setup process significantly
+  - Updated all documentation to reflect new requirements
+- Updated config validator to only check Developer API credentials
+- Removed `host_agent` from service list (not implemented)
+
+### Added
+- **Comprehensive SETUP.md**: Step-by-step installation guide
+  - MQTT broker installation for Linux/macOS/Windows/Docker
+  - Developer API credential acquisition guide
+  - Configuration examples and troubleshooting
+- **tools/README.md**: Explains legacy `ecoflow_get_mqtt_login.sh` script
+- **Quick Start section** in README with 30-second overview
+- Architecture clarification: Mosquitto bridge config NOT needed
+- AI collaboration disclosure (Gemini 3.0 Pro & Claude Sonnet 4.5)
+
+### Fixed
+- Dockerfile now includes `__version__.py` (fixes "vunknown" display)
+- Config summary no longer displays username (not used)
+
+### Documentation
+- Clarified that `ecoflow_cloud_bridge.py` replaces Mosquitto bridges
+- Added mermaid architecture diagram back to README
+- Updated all credential examples to remove username/password
+- Improved troubleshooting sections
+
+### Verified
+- System works without Cloud API credentials (username/password)
+- Mosquitto bridge configuration confirmed unnecessary
+- All services connect and operate correctly with only Developer API
+
+---
+
 ## [0.1.0-alpha] - 2026-01-20
+
 
 ### Added
 - **Initial alpha release** of EcoFlow Power Management Orchestrator
@@ -67,4 +105,6 @@ This is an **alpha release** intended for early testing and feedback. While the 
 
 ---
 
+[0.2.0-alpha]: https://github.com/JoshuaDodds/ecoflow-power-management/releases/tag/v0.2.0-alpha
 [0.1.0-alpha]: https://github.com/JoshuaDodds/ecoflow-power-management/releases/tag/v0.1.0-alpha
+

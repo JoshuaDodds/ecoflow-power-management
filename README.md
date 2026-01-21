@@ -1,6 +1,6 @@
 # EcoFlow Power Management Orchestrator
 
-![Version](https://img.shields.io/badge/version-0.1.0--alpha-orange)
+![Version](https://img.shields.io/badge/version-0.2.0--alpha-orange)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 
@@ -18,11 +18,43 @@ The system is intentionally:
 
 ---
 
+## 🚀 Quick Start
+
+**New to this project?** Follow the complete setup guide: **[SETUP.md](SETUP.md)**
+
+### Prerequisites
+
+Before you begin, you need:
+1. **EcoFlow Device** (tested with River 3 Plus)
+2. **EcoFlow Developer API Access** ([apply here](https://developer-eu.ecoflow.com))
+3. **Local MQTT Broker** (Mosquitto) - **Required for all deployments**
+4. **Python 3.10+**
+
+### 30-Second Overview
+
+```bash
+# 1. Install local MQTT broker (Mosquitto) - REQUIRED
+sudo apt install mosquitto mosquitto-clients
+
+# 2. Clone and configure
+git clone https://github.com/JoshuaDodds/ecoflow-power-management.git
+cd ecoflow-power-management
+cp .env-example .env
+# Edit .env with your credentials
+
+# 3. Install Python dependencies and run
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python3 main.py
+```
+
+**For detailed instructions, see [SETUP.md](SETUP.md)**
+
+---
+
 ## 🏗 System Architecture
 
 The system runs as a collection of decoupled microservices, managed by a central **Orchestrator** (`main.py`).
-
-
 
 ```mermaid
 graph TD
@@ -48,37 +80,23 @@ graph TD
 ### Prerequisites
 * Python 3.10+
 * A local MQTT Broker (e.g., Mosquitto) running and accessible.
-* **Both** EcoFlow Cloud API credentials AND Developer API credentials (see below)
+* **EcoFlow Developer API credentials** (see below)
 
 ### Understanding EcoFlow API Credentials
 
-This system requires **TWO sets of credentials** to maintain a reliable, continuous MQTT connection to EcoFlow's cloud infrastructure:
+This system uses the **EcoFlow Developer API** to connect to your devices.
 
-#### 1. Cloud API Credentials (Username & Password)
-- **What:** Your standard EcoFlow account email and password
-- **Purpose:** Used to authenticate and obtain temporary MQTT broker certificates
-- **API Endpoint:** `https://api.ecoflow.com/auth/login` → `/iot-auth/app/certification`
-- **Limitation:** These credentials alone are **not sufficient** for reliable operation
+#### What You Need: Developer API Credentials
 
-#### 2. Developer API Credentials (Access Key & Secret Key)
-- **What:** API keys from the EcoFlow Developer Portal
-- **Purpose:** Required to send periodic "wakeup" packets (heartbeats) to keep the MQTT connection alive and streaming data
+- **Access Key** and **Secret Key** from the EcoFlow Developer Portal
+- **Purpose:** Authenticate and obtain temporary MQTT credentials to connect to EcoFlow cloud
 - **API Endpoint:** `https://api-e.ecoflow.com/iot-open/sign/certification`
-- **Critical:** Without these, the MQTT broker connection will go silent after a few minutes or not wakeup at all. 
 
-#### Why Both Are Needed
-
-The EcoFlow MQTT broker requires **active heartbeat packets** to continue streaming device telemetry. Without periodic wakeup commands:
-- The connection appears established but **stops sending data**
-- No error messages are generated—the stream simply goes silent
-- The system cannot detect battery state changes or trigger shutdown policies
-
-The Developer API credentials enable the `ecoflow_cloud_bridge` service to:
-1. Authenticate using the signed API request format
-2. Send protobuf-encoded "Cmd 0" (quota/get-all) packets every 5 minutes
-3. Keep the data stream flowing continuously
-
-**In summary:** Cloud credentials get you connected; Developer credentials keep you connected.
+The `ecoflow_cloud_bridge` service uses these credentials to:
+1. Obtain temporary MQTT broker credentials
+2. Connect to EcoFlow cloud MQTT
+3. Send periodic "wakeup" packets (heartbeats) to keep data streaming
+4. Forward device telemetry to your local MQTT broker
 
 ---
 
@@ -115,6 +133,7 @@ Many users (including the project maintainer) have reported:
 #### Step 3: Generate Your API Keys
 
 1. **Sign in** to the Developer Portal using your **EcoFlow account credentials** (same email/password as the mobile app)
+
 
 2. Navigate to **"Access Key Management"** or **"API Keys"**
 
@@ -165,10 +184,6 @@ pip install -r requirements.txt
 Copy `.env-example` to `.env` and configure:
 
 ```bash
-# Cloud API Credentials (Standard Account)
-ECOFLOW_USERNAME="your-email@example.com"
-ECOFLOW_PASSWORD="your-password"
-
 # Developer API Credentials (From Developer Portal)
 ECOFLOW_ACCESS_KEY="AK_xxxxxxxxxxxxxxxxxxxxxxxxxx"
 ECOFLOW_SECRET_KEY="SK_yyyyyyyyyyyyyyyyyyyyyyyyyy"
@@ -178,6 +193,7 @@ ECOFLOW_DEVICE_LIST="R631ZEB4WH123456,R631ZEB4WH789012"
 
 # Local MQTT Broker
 MQTT_HOST="localhost"
+
 
 # Policy Rules
 POLICY_SOC_MIN=10            # Shutdown if Battery <= 10%
