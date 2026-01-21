@@ -314,7 +314,7 @@ Test your policy logic without draining your actual physical batteries. We provi
 **Phase 3: Robustness (Future)**
 * [ ] Startup coordination (Wake-on-LAN when power returns?)
 * [ ] Capacity-weighted SoC (for multi-device setups)
-* [ ] Notifications (Pushover/Telegram integration)
+* ✅ Notifications (Pushover/Telegram integration)
 
 ---
 
