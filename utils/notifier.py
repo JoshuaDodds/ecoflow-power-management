@@ -142,8 +142,8 @@ class Notifier:
         if not self.notify_grid_loss:
             logger.warning(f"grid_lost() - notifications disabled, skipping")
             return
-        message = f"⚠️ <b>Grid Power Lost</b>\n\nDevice: {device_name}\nBattery power active"
-        self.send(message, priority=1, title="Power Outage")
+        message = f"⚠️ <b>AC Input Lost or battery charge limit exceeded</b>\n\nDevice: {device_name}\nBattery is discharging to loads"
+        self.send(message, priority=1, title="Possible AC Power Outage")
     
     def soc_warning(self, device_name: str, soc: int, threshold: int):
         """Notify about low battery SOC"""
@@ -192,8 +192,8 @@ class Notifier:
         if not self.notify_grid_restored:
             logger.warning(f"grid_restored() - notifications disabled, skipping")
             return
-        message = f"✅ <b>Grid Power Restored</b>\n\nDevice: {device_name}\nShutdown aborted"
-        self.send(message, priority=0, title="Power Restored")
+        message = f"✅ <b>Pass-through operation mode active</b>\n\nDevice: {device_name}"
+        self.send(message, priority=0, title="AC Power Restored")
     
     def system_startup(self, version: str):
         """Notify that the system started"""
