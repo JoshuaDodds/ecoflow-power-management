@@ -447,6 +447,16 @@ This project was developed in collaboration with AI assistance (Google Gemini 3.
 
 ---
 
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for more details.
+
+- **Found a bug?** Open a [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md).
+- **Have a feature request?** Open a [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md).
+- **Want to test a device?** Check the "Device Compatibility Testing" section in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Please also read our [Code of Conduct](CODE_OF_CONDUCT.md) and [Security Policy](SECURITY.md).
+
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file for details.
