@@ -13,6 +13,7 @@ Run specific test file:
 ```bash
 python3 -m unittest tests.test_env_loader
 python3 -m unittest tests.test_policy_engine
+python3 -m unittest tests.test_config_validation
 ```
 
 Run with verbose output:
@@ -32,3 +33,17 @@ python3 -m unittest discover tests -v
   - JSON configuration parsing
   - Error handling
   - The fix for: `'PolicyEngine' object has no attribute 'agent_shutdown_delay'`
+
+- **test_config_validation.py**: Tests for `utils/config_validator.py`
+  - Required environment variable validation
+  - MQTT port validation
+  - JSON format validation
+  - Configuration summary generation
+
+## Test Results
+
+All tests should pass:
+```
+Ran 15 tests in 0.008s
+OK
+```

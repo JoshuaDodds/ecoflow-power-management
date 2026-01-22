@@ -1,5 +1,11 @@
 # EcoFlow Power Management Orchestrator
 
+![Version](https://img.shields.io/github/v/release/JoshuaDodds/ecoflow-power-management?include_prereleases&label=version)
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+
+> **⚠️ Alpha Release:** This is an early release for testing and feedback. Please test thoroughly before using in production.
+
 **A lightweight, MQTT-based power-aware shutdown system for heterogeneous environments (Linux, Windows, NAS).**
 
 This system acts as a bridge between the proprietary EcoFlow MQTT cloud and your local infrastructure. It consumes device telemetry, derives a normalized battery State-of-Charge (SoC), and—when configurable thresholds are reached—initiates clean, host-local shutdown procedures across machines powered by those devices.
@@ -10,13 +16,51 @@ The system is intentionally:
 * **Fail-safe:** No direct SSH, WinRM, or remote execution is required.
 * **Host-local execution:** Each machine listens for a command and decides how to shut itself down.
 
+## 📚 Documentation
+
+- **[SETUP.md](SETUP.md)** - Complete step-by-step installation guide
+- **[DOCKER.md](DOCKER.md)** - Container deployment instructions
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
+
+---
+
+## 🚀 Quick Start
+
+**New to this project?** Follow the complete setup guide: **[SETUP.md](SETUP.md)**
+
+### Prerequisites
+
+Before you begin, you need:
+1. **EcoFlow Device** (tested with River 3 Plus)
+2. **EcoFlow Developer API Access** ([apply here](https://developer-eu.ecoflow.com))
+3. **Local MQTT Broker** (Mosquitto) - **Required for all deployments**
+4. **Python 3.10+**
+
+### 30-Second Overview
+
+```bash
+# 1. Install local MQTT broker (Mosquitto) - REQUIRED
+sudo apt install mosquitto mosquitto-clients
+
+# 2. Clone and configure
+git clone https://github.com/JoshuaDodds/ecoflow-power-management.git
+cd ecoflow-power-management
+cp .env-example .env
+# Edit .env with your credentials
+
+# 3. Install Python dependencies and run
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python3 main.py
+```
+
+**For detailed instructions, see [SETUP.md](SETUP.md)**
+
 ---
 
 ## 🏗 System Architecture
 
 The system runs as a collection of decoupled microservices, managed by a central **Orchestrator** (`main.py`).
-
-
 
 ```mermaid
 graph TD
@@ -25,7 +69,8 @@ graph TD
     LocalMQTT -->|Raw Data| SOC[SOC Bridge]
     SOC -->|Decoded JSON| LocalMQTT
     LocalMQTT -->|Normalized State| Policy[Policy Engine]
-    Policy -->|Shutdown/Abort Cmds| Agents[PC/Server Agents]
+    Policy -->|Shutdown/Abort Cmds| LocalMQTT
+    LocalMQTT -->|Cmds| Agents[PC/Server Agents]
 ```
 
 ### Active Services
@@ -42,37 +87,23 @@ graph TD
 ### Prerequisites
 * Python 3.10+
 * A local MQTT Broker (e.g., Mosquitto) running and accessible.
-* **Both** EcoFlow Cloud API credentials AND Developer API credentials (see below)
+* **EcoFlow Developer API credentials** (see below)
 
 ### Understanding EcoFlow API Credentials
 
-This system requires **TWO sets of credentials** to maintain a reliable, continuous MQTT connection to EcoFlow's cloud infrastructure:
+This system uses the **EcoFlow Developer API** to connect to your devices.
 
-#### 1. Cloud API Credentials (Username & Password)
-- **What:** Your standard EcoFlow account email and password
-- **Purpose:** Used to authenticate and obtain temporary MQTT broker certificates
-- **API Endpoint:** `https://api.ecoflow.com/auth/login` → `/iot-auth/app/certification`
-- **Limitation:** These credentials alone are **not sufficient** for reliable operation
+#### What You Need: Developer API Credentials
 
-#### 2. Developer API Credentials (Access Key & Secret Key)
-- **What:** API keys from the EcoFlow Developer Portal
-- **Purpose:** Required to send periodic "wakeup" packets (heartbeats) to keep the MQTT connection alive and streaming data
+- **Access Key** and **Secret Key** from the EcoFlow Developer Portal
+- **Purpose:** Authenticate and obtain temporary MQTT credentials to connect to EcoFlow cloud
 - **API Endpoint:** `https://api-e.ecoflow.com/iot-open/sign/certification`
-- **Critical:** Without these, the MQTT broker connection will go silent after a few minutes or not wakeup at all. 
 
-#### Why Both Are Needed
-
-The EcoFlow MQTT broker requires **active heartbeat packets** to continue streaming device telemetry. Without periodic wakeup commands:
-- The connection appears established but **stops sending data**
-- No error messages are generated—the stream simply goes silent
-- The system cannot detect battery state changes or trigger shutdown policies
-
-The Developer API credentials enable the `ecoflow_cloud_bridge` service to:
-1. Authenticate using the signed API request format
-2. Send protobuf-encoded "Cmd 0" (quota/get-all) packets every 5 minutes
-3. Keep the data stream flowing continuously
-
-**In summary:** Cloud credentials get you connected; Developer credentials keep you connected.
+The `ecoflow_cloud_bridge` service uses these credentials to:
+1. Obtain temporary MQTT broker credentials
+2. Connect to EcoFlow cloud MQTT
+3. Send periodic "wakeup" packets (heartbeats) to keep data streaming
+4. Forward device telemetry to your local MQTT broker
 
 ---
 
@@ -109,6 +140,7 @@ Many users (including the project maintainer) have reported:
 #### Step 3: Generate Your API Keys
 
 1. **Sign in** to the Developer Portal using your **EcoFlow account credentials** (same email/password as the mobile app)
+
 
 2. Navigate to **"Access Key Management"** or **"API Keys"**
 
@@ -148,7 +180,7 @@ ECOFLOW_SECRET_KEY="SK_yyyyyyyyyyyyyyyyyyyyyyyyyy"
 
 ### 1. Clone & Prepare
 ```bash
-git clone [https://github.com/your-repo/ecoflow-power-management.git](https://github.com/your-repo/ecoflow-power-management.git)
+git clone https://github.com/JoshuaDodds/ecoflow-power-management.git
 cd ecoflow-power-management
 python3 -m venv venv
 source venv/bin/activate
@@ -159,10 +191,6 @@ pip install -r requirements.txt
 Copy `.env-example` to `.env` and configure:
 
 ```bash
-# Cloud API Credentials (Standard Account)
-ECOFLOW_USERNAME="your-email@example.com"
-ECOFLOW_PASSWORD="your-password"
-
 # Developer API Credentials (From Developer Portal)
 ECOFLOW_ACCESS_KEY="AK_xxxxxxxxxxxxxxxxxxxxxxxxxx"
 ECOFLOW_SECRET_KEY="SK_yyyyyyyyyyyyyyyyyyyyyyyyyy"
@@ -172,6 +200,7 @@ ECOFLOW_DEVICE_LIST="R631ZEB4WH123456,R631ZEB4WH789012"
 
 # Local MQTT Broker
 MQTT_HOST="localhost"
+
 
 # Policy Rules
 POLICY_SOC_MIN=10            # Shutdown if Battery <= 10%
@@ -255,19 +284,135 @@ The system uses a strict parsing logic for the River 3 Plus to avoid false posit
 
 ---
 
-## 🧪 Testing & Simulation
+## 🧪 Testing
 
-Test your policy logic without draining your actual physical batteries. We provide a simulation tool that injects fake MQTT messages.
+This project includes comprehensive unit tests to ensure reliability and correctness. All tests are located in the `tests/` directory.
 
-1.  Add `"SimulatedDevice"` to your `.env` mapping:
-    ```bash
-    DEVICE_TO_AGENTS_JSON='{..., "SimulatedDevice": ["test-agent"]}'
-    ```
-2.  Run the simulation:
-    ```bash
-    python3 scripts/simulate_critical_event.py
-    ```
-3.  Watch `policy_engine` logs for "TIMER START", "SHUTDOWN TRIGGERED", and "ABORT".
+### Running Tests
+
+The project uses Python's built-in `unittest` framework. No additional test dependencies are required beyond the packages in `requirements.txt`.
+
+**Run all tests:**
+```bash
+python3 -m unittest discover tests
+```
+
+**Run all tests with verbose output:**
+```bash
+python3 -m unittest discover tests -v
+```
+
+**Run a specific test file:**
+```bash
+python3 -m unittest tests.test_policy_engine
+python3 -m unittest tests.test_config_validation
+python3 -m unittest tests.test_env_loader
+```
+
+**Run a specific test case:**
+```bash
+python3 -m unittest tests.test_policy_engine.TestPolicyEngineInitialization.test_empty_json_config
+```
+
+### Test Directory Structure
+
+```
+tests/
+├── README.md                    # Test documentation
+├── __init__.py                  # Test package initialization
+├── test_config_validation.py   # Configuration validation tests
+├── test_env_loader.py           # Environment variable parsing tests
+├── test_policy_engine.py        # Policy engine logic tests
+├── test_pushover.py             # Notification service tests
+├── test_soc_filter.py           # SOC anomaly detection tests
+└── test_state_filter.py         # State filtering tests
+```
+
+### Test Coverage
+
+| Test File | Module Under Test | What It Tests |
+|-----------|------------------|---------------|
+| `test_config_validation.py` | `utils/config_validator.py` | Required env vars, MQTT port validation, JSON format validation, config summary generation |
+| `test_env_loader.py` | `utils/env_loader.py` | Multi-line value parsing, single-line parsing, empty value handling |
+| `test_policy_engine.py` | `services/policy_engine.py` | Attribute initialization, JSON config parsing, error handling, shutdown delay logic |
+| `test_pushover.py` | `utils/pushover.py` | Notification formatting and delivery |
+| `test_soc_filter.py` | `utils/soc_filter.py` | Anomaly detection, median filtering, confirmation windows |
+| `test_state_filter.py` | `utils/state_filter.py` | Grid state filtering, transient rejection |
+
+### Writing New Tests
+
+When adding new features or fixing bugs, follow these testing patterns:
+
+**1. Test file structure:**
+```python
+#!/usr/bin/env python3
+"""
+Brief description of what this test file covers.
+"""
+import os
+import sys
+import unittest
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+class TestYourFeature(unittest.TestCase):
+    """Test cases for your feature"""
+    
+    def setUp(self):
+        """Setup before each test"""
+        pass
+    
+    def tearDown(self):
+        """Cleanup after each test"""
+        pass
+    
+    def test_specific_behavior(self):
+        """Test a specific behavior"""
+        # Arrange
+        # Act
+        # Assert
+        pass
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+**2. Environment variable testing:**
+- Always save and restore `os.environ` in `setUp()` and `tearDown()`
+- Clear relevant env vars before each test to ensure isolation
+- See `test_config_validation.py` for examples
+
+**3. Testing best practices:**
+- Use descriptive test names that explain what is being tested
+- Include docstrings for each test method
+- Test both success and failure cases
+- Test edge cases (empty strings, None values, malformed input)
+- Use `self.assert*` methods for clear failure messages
+
+### Integration Testing
+
+For end-to-end testing of the power management logic, use the simulation tool:
+
+```bash
+# Add a simulated device to your .env
+DEVICE_TO_AGENTS_JSON='{"SimulatedDevice": ["test-agent"]}'
+
+# Run the simulation
+python3 scripts/simulate_critical_event.py
+```
+
+This simulates:
+- Grid disconnection
+- Battery drain to critical levels
+- Policy engine timer activation
+- Shutdown command broadcast
+- Power restoration and abort logic
+
+Watch the logs for:
+- `TIMER START` - Debounce timer activated
+- `SHUTDOWN TRIGGERED` - Command sent to agents
+- `ABORT` - Shutdown cancelled due to power restoration
 
 ---
 
@@ -286,7 +431,7 @@ Test your policy logic without draining your actual physical batteries. We provi
 **Phase 3: Robustness (Future)**
 * [ ] Startup coordination (Wake-on-LAN when power returns?)
 * [ ] Capacity-weighted SoC (for multi-device setups)
-* [ ] Notifications (Pushover/Telegram integration)
+* ✅ Notifications (Pushover/Telegram integration)
 
 ---
 
@@ -294,3 +439,27 @@ Test your policy logic without draining your actual physical batteries. We provi
 * **No remote execution:** We do not SSH into boxes. They must subscribe to us.
 * **No Windows binaries:** We do not ship `.exe` agents. Native scripts are safer and more auditable.
 * **No vendor SDK dependency:** We decode the raw protobuf directly.
+
+---
+
+## 🤖 AI Collaboration Disclosure
+
+This project was developed in collaboration with AI assistance (Google Gemini 3.0 Pro and Anthropic Claude Sonnet 4.5) to accelerate development, improve code quality, and enhance documentation. All code has been reviewed, tested, and validated by the project maintainer.
+
+---
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for more details.
+
+- **Found a bug?** Open a [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md).
+- **Have a feature request?** Open a [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md).
+- **Want to test a device?** Check the "Device Compatibility Testing" section in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Please also read our [Code of Conduct](CODE_OF_CONDUCT.md) and [Security Policy](SECURITY.md).
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+Copyright (c) 2026 Joshua Dodds
