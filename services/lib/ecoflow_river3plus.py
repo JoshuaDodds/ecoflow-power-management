@@ -65,23 +65,40 @@ class EcoFlowDevice:
                 # --- Battery Module Signature Check ---
                 if m_soc is not None:
                     is_valid_bms = True
-
-                    # 1. Ghost Check: SoC 0 and Temp 0 (Empty Slot)
-                    if m_soc == 0:
+                    
+                    # 1. SOC Range Validation (MUST be 0-100%)
+                    if not (0 <= m_soc <= 100):
+                        is_valid_bms = False
+                        logger.debug(f"[{self.sn}] Rejected SOC out of range: {m_soc}")
+                    
+                    # 2. Ghost Check: SoC 0 and Temp 0 (Empty Slot)
+                    elif m_soc == 0:
                         if m_temp is None or m_temp == 0:
                             is_valid_bms = False
+                    
+                    # 3. Enum/Imposter Check
+                    # Valid battery temps are in centidegrees (e.g., 25000 = 25.0°C)
+                    # Values 0-100 likely represent status enums, not temperatures
+                    elif m_temp is not None and (0 < m_temp < 100):
+                        is_valid_bms = False
+                    
+                    # 4. Require Temperature for Valid BMS Module
+                    # Valid battery modules ALWAYS report temperature (field 16)
+                    # Ghost/disconnected modules typically don't report temperature
+                    elif m_temp is None:
+                        is_valid_bms = False
+                        logger.debug(f"[{self.sn}] Rejected SOC without temp: {m_soc}%")
 
-                    # 2. Enum/Imposter Check
-                    if m_temp is not None:
-                        if 0 < m_temp < 100:
-                            is_valid_bms = False
-
-                    # 3. Aggregation
+                    # 5. Aggregation
                     if is_valid_bms:
                         raw_socs.append(m_soc)
                         if m_temp is not None:
                             valid_temps.append(m_temp / 100.0)
                         packet_contains_valid_data = True
+                        logger.debug(
+                            f"[{self.sn}] ✓ Valid BMS: SOC={m_soc}%, "
+                            f"Temp={m_temp/100.0 if m_temp else 'N/A'}°C"
+                        )
 
             # --- Update State ---
             if updates:
