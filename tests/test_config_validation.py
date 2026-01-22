@@ -37,8 +37,6 @@ class TestConfigValidation(unittest.TestCase):
     def test_valid_configuration(self):
         """Test that valid configuration passes validation"""
         # Set all required variables
-        os.environ['ECOFLOW_USERNAME'] = 'test@example.com'
-        os.environ['ECOFLOW_PASSWORD'] = 'testpass'
         os.environ['ECOFLOW_ACCESS_KEY'] = 'AK_test123'
         os.environ['ECOFLOW_SECRET_KEY'] = 'SK_test456'
         os.environ['ECOFLOW_DEVICE_LIST'] = 'DEVICE1,DEVICE2'
@@ -51,28 +49,9 @@ class TestConfigValidation(unittest.TestCase):
         result = ConfigValidator.validate_all()
         self.assertTrue(result)
 
-    def test_missing_username(self):
-        """Test that missing username is detected"""
-        # Set all except username
-        os.environ['ECOFLOW_PASSWORD'] = 'testpass'
-        os.environ['ECOFLOW_ACCESS_KEY'] = 'AK_test123'
-        os.environ['ECOFLOW_SECRET_KEY'] = 'SK_test456'
-        os.environ['ECOFLOW_DEVICE_LIST'] = 'DEVICE1'
-        os.environ['MQTT_HOST'] = 'localhost'
-        
-        from utils.config_validator import ConfigValidator
-        
-        # Should exit with error
-        with self.assertRaises(SystemExit) as cm:
-            ConfigValidator.validate_all()
-        
-        self.assertEqual(cm.exception.code, 1)
-
     def test_invalid_mqtt_port(self):
         """Test that invalid MQTT port is detected"""
         # Set all required variables
-        os.environ['ECOFLOW_USERNAME'] = 'test@example.com'
-        os.environ['ECOFLOW_PASSWORD'] = 'testpass'
         os.environ['ECOFLOW_ACCESS_KEY'] = 'AK_test123'
         os.environ['ECOFLOW_SECRET_KEY'] = 'SK_test456'
         os.environ['ECOFLOW_DEVICE_LIST'] = 'DEVICE1'
@@ -90,8 +69,6 @@ class TestConfigValidation(unittest.TestCase):
     def test_invalid_json(self):
         """Test that invalid JSON in DEVICE_TO_AGENTS_JSON is detected"""
         # Set all required variables
-        os.environ['ECOFLOW_USERNAME'] = 'test@example.com'
-        os.environ['ECOFLOW_PASSWORD'] = 'testpass'
         os.environ['ECOFLOW_ACCESS_KEY'] = 'AK_test123'
         os.environ['ECOFLOW_SECRET_KEY'] = 'SK_test456'
         os.environ['ECOFLOW_DEVICE_LIST'] = 'DEVICE1'
@@ -109,8 +86,6 @@ class TestConfigValidation(unittest.TestCase):
     def test_valid_json(self):
         """Test that valid JSON passes validation"""
         # Set all required variables
-        os.environ['ECOFLOW_USERNAME'] = 'test@example.com'
-        os.environ['ECOFLOW_PASSWORD'] = 'testpass'
         os.environ['ECOFLOW_ACCESS_KEY'] = 'AK_test123'
         os.environ['ECOFLOW_SECRET_KEY'] = 'SK_test456'
         os.environ['ECOFLOW_DEVICE_LIST'] = 'DEVICE1'
@@ -126,8 +101,6 @@ class TestConfigValidation(unittest.TestCase):
     def test_config_summary_no_crash(self):
         """Test that config summary doesn't crash with valid config"""
         # Set all required variables
-        os.environ['ECOFLOW_USERNAME'] = 'test@example.com'
-        os.environ['ECOFLOW_PASSWORD'] = 'testpass'
         os.environ['ECOFLOW_ACCESS_KEY'] = 'AK_test123'
         os.environ['ECOFLOW_SECRET_KEY'] = 'SK_test456'
         os.environ['ECOFLOW_DEVICE_LIST'] = 'DEVICE1,DEVICE2'

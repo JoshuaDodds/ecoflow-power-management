@@ -283,19 +283,135 @@ The system uses a strict parsing logic for the River 3 Plus to avoid false posit
 
 ---
 
-## 🧪 Testing & Simulation
+## 🧪 Testing
 
-Test your policy logic without draining your actual physical batteries. We provide a simulation tool that injects fake MQTT messages.
+This project includes comprehensive unit tests to ensure reliability and correctness. All tests are located in the `tests/` directory.
 
-1.  Add `"SimulatedDevice"` to your `.env` mapping:
-    ```bash
-    DEVICE_TO_AGENTS_JSON='{..., "SimulatedDevice": ["test-agent"]}'
-    ```
-2.  Run the simulation:
-    ```bash
-    python3 scripts/simulate_critical_event.py
-    ```
-3.  Watch `policy_engine` logs for "TIMER START", "SHUTDOWN TRIGGERED", and "ABORT".
+### Running Tests
+
+The project uses Python's built-in `unittest` framework. No additional test dependencies are required beyond the packages in `requirements.txt`.
+
+**Run all tests:**
+```bash
+python3 -m unittest discover tests
+```
+
+**Run all tests with verbose output:**
+```bash
+python3 -m unittest discover tests -v
+```
+
+**Run a specific test file:**
+```bash
+python3 -m unittest tests.test_policy_engine
+python3 -m unittest tests.test_config_validation
+python3 -m unittest tests.test_env_loader
+```
+
+**Run a specific test case:**
+```bash
+python3 -m unittest tests.test_policy_engine.TestPolicyEngineInitialization.test_empty_json_config
+```
+
+### Test Directory Structure
+
+```
+tests/
+├── README.md                    # Test documentation
+├── __init__.py                  # Test package initialization
+├── test_config_validation.py   # Configuration validation tests
+├── test_env_loader.py           # Environment variable parsing tests
+├── test_policy_engine.py        # Policy engine logic tests
+├── test_pushover.py             # Notification service tests
+├── test_soc_filter.py           # SOC anomaly detection tests
+└── test_state_filter.py         # State filtering tests
+```
+
+### Test Coverage
+
+| Test File | Module Under Test | What It Tests |
+|-----------|------------------|---------------|
+| `test_config_validation.py` | `utils/config_validator.py` | Required env vars, MQTT port validation, JSON format validation, config summary generation |
+| `test_env_loader.py` | `utils/env_loader.py` | Multi-line value parsing, single-line parsing, empty value handling |
+| `test_policy_engine.py` | `services/policy_engine.py` | Attribute initialization, JSON config parsing, error handling, shutdown delay logic |
+| `test_pushover.py` | `utils/pushover.py` | Notification formatting and delivery |
+| `test_soc_filter.py` | `utils/soc_filter.py` | Anomaly detection, median filtering, confirmation windows |
+| `test_state_filter.py` | `utils/state_filter.py` | Grid state filtering, transient rejection |
+
+### Writing New Tests
+
+When adding new features or fixing bugs, follow these testing patterns:
+
+**1. Test file structure:**
+```python
+#!/usr/bin/env python3
+"""
+Brief description of what this test file covers.
+"""
+import os
+import sys
+import unittest
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+class TestYourFeature(unittest.TestCase):
+    """Test cases for your feature"""
+    
+    def setUp(self):
+        """Setup before each test"""
+        pass
+    
+    def tearDown(self):
+        """Cleanup after each test"""
+        pass
+    
+    def test_specific_behavior(self):
+        """Test a specific behavior"""
+        # Arrange
+        # Act
+        # Assert
+        pass
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+**2. Environment variable testing:**
+- Always save and restore `os.environ` in `setUp()` and `tearDown()`
+- Clear relevant env vars before each test to ensure isolation
+- See `test_config_validation.py` for examples
+
+**3. Testing best practices:**
+- Use descriptive test names that explain what is being tested
+- Include docstrings for each test method
+- Test both success and failure cases
+- Test edge cases (empty strings, None values, malformed input)
+- Use `self.assert*` methods for clear failure messages
+
+### Integration Testing
+
+For end-to-end testing of the power management logic, use the simulation tool:
+
+```bash
+# Add a simulated device to your .env
+DEVICE_TO_AGENTS_JSON='{"SimulatedDevice": ["test-agent"]}'
+
+# Run the simulation
+python3 scripts/simulate_critical_event.py
+```
+
+This simulates:
+- Grid disconnection
+- Battery drain to critical levels
+- Policy engine timer activation
+- Shutdown command broadcast
+- Power restoration and abort logic
+
+Watch the logs for:
+- `TIMER START` - Debounce timer activated
+- `SHUTDOWN TRIGGERED` - Command sent to agents
+- `ABORT` - Shutdown cancelled due to power restoration
 
 ---
 
