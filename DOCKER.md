@@ -137,13 +137,70 @@ docker exec ecoflow-orchestrator ps aux
 
 ## 🚀 GitHub Actions CI/CD
 
-The repository includes automated builds via GitHub Actions (`.github/workflows/main.yml`):
+The repository includes automated builds via GitHub Actions:
+
+### Production Builds (`.github/workflows/main.yml`)
 
 - **Trigger:** Push to `main` branch or manual workflow dispatch
 - **Platforms:** Multi-architecture builds for `linux/amd64` and `linux/arm64`
 - **Registry:** Images pushed to GitHub Container Registry (ghcr.io)
-- **Versioning:** CalVer format (YYYY.MM.DD.HH) + `latest` tag
+- **Versioning:** CalVer format (YYYY.MM.DD-buildnum) + `latest` tag
 - **Releases:** Automatic GitHub releases with generated notes
+
+### Staging Builds (`.github/workflows/staging.yml`)
+
+**Use staging builds to test changes before shipping to production.**
+
+- **Trigger:** Push to `staging` branch or manual workflow dispatch
+- **Platforms:** Multi-architecture builds for `linux/amd64` and `linux/arm64`
+- **Registry:** Images pushed to GitHub Container Registry (ghcr.io)
+- **Tags:** 
+  - `ghcr.io/joshuadodds/ecoflow-power-management:staging` (always latest staging)
+  - `ghcr.io/joshuadodds/ecoflow-power-management:staging-YYYY.MM.DD-buildnum` (specific build)
+- **No Releases:** Staging builds do not create GitHub releases
+
+#### Testing Staging Builds Locally
+
+1. **Create and push to staging branch:**
+   ```bash
+   git checkout -b staging
+   # Make your changes
+   git add .
+   git commit -m "Testing new feature"
+   git push origin staging
+   ```
+
+2. **Wait for GitHub Actions to complete** (check the Actions tab)
+
+3. **Pull and test the staging image:**
+   ```bash
+   # Pull the latest staging image
+   docker pull ghcr.io/joshuadodds/ecoflow-power-management:staging
+   
+   # Run it locally with your .env
+   docker run -d \
+     --name ecoflow-staging-test \
+     --env-file .env \
+     ghcr.io/joshuadodds/ecoflow-power-management:staging
+   
+   # View logs
+   docker logs -f ecoflow-staging-test
+   ```
+
+4. **When satisfied, merge to main:**
+   ```bash
+   git checkout main
+   git merge staging
+   git push origin main
+   ```
+   This will trigger the production build with versioned releases.
+
+#### Cleaning Up Staging Tests
+
+```bash
+docker stop ecoflow-staging-test
+docker rm ecoflow-staging-test
+```
 
 ### Skipping CI Builds
 
