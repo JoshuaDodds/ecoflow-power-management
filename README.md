@@ -69,7 +69,8 @@ graph TD
     LocalMQTT -->|Raw Data| SOC[SOC Bridge]
     SOC -->|Decoded JSON| LocalMQTT
     LocalMQTT -->|Normalized State| Policy[Policy Engine]
-    Policy -->|Shutdown/Abort Cmds| Agents[PC/Server Agents]
+    Policy -->|Shutdown/Abort Cmds| LocalMQTT
+    LocalMQTT -->|Cmds| Agents[PC/Server Agents]
 ```
 
 ### Active Services
