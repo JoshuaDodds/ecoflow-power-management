@@ -107,6 +107,13 @@ class SOCFilter:
         if self.last_valid_soc is None:
             return True
         
+        # Small changes (<= 3.0%) are always plausible regardless of time
+        # This handles rapid toggling between batteries (e.g. 90% -> 89% -> 90%)
+        # and normal charging/discharging noise.
+        soc_delta = abs(new_soc - self.last_valid_soc)
+        if soc_delta <= 3.0:
+            return True
+
         change_rate = self._calculate_change_rate(new_soc, timestamp)
         return change_rate <= self.max_change_per_minute
     
