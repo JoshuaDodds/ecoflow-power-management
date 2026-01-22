@@ -1,0 +1,69 @@
+name: Build Staging Image
+
+on:
+  push:
+    branches: [ staging ]
+
+  workflow_dispatch:
+
+jobs:
+  build_and_push_staging:
+    if: "!contains(github.event.head_commit.message, 'skip ci')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Repository Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: '0'
+
+      - name: Generate staging version info
+        id: staging_info
+        run: |
+          BUILD_NUM=$(git rev-list --count HEAD)
+          STAGING_VERSION="staging-$(TZ='Europe/Amsterdam' date +%Y.%m.%d)-${BUILD_NUM}"
+          echo "version=${STAGING_VERSION}" >> $GITHUB_OUTPUT
+          echo "repo=$(echo ${{ github.repository }} | tr [:upper:] [:lower:])" >> $GITHUB_OUTPUT
+          echo "Building staging version: ${STAGING_VERSION}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Multiplatform docker build and push
+        uses: docker/build-push-action@v3
+        with:
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            APP_VERSION=${{ steps.staging_info.outputs.version }}
+          tags: |
+            ghcr.io/${{ steps.staging_info.outputs.repo }}:staging
+            ghcr.io/${{ steps.staging_info.outputs.repo }}:${{ steps.staging_info.outputs.version }}
+          cache-from: type=registry,ref=ghcr.io/${{ steps.staging_info.outputs.repo }}:buildcache-staging
+          cache-to: type=registry,ref=ghcr.io/${{ steps.staging_info.outputs.repo }}:buildcache-staging,mode=max
+
+      - name: Output staging image details
+        run: |
+          echo "## Staging Image Built Successfully! 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ steps.staging_info.outputs.repo }}:staging\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ steps.staging_info.outputs.repo }}:${{ steps.staging_info.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**To test locally:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ghcr.io/${{ steps.staging_info.outputs.repo }}:staging" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
